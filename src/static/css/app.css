@@ -1,0 +1,1123 @@
+/* App Opalus Data Connect — layout de shell e ajustes sobre o ds_opalus */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--surface-page);
+  color: var(--text-body);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---------- Shell ---------- */
+.app-shell {
+  display: flex;
+  height: calc(100vh - 64px);
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-footer {
+  padding: var(--space-6) var(--space-8);
+  border-top: 1px solid var(--border-default);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--surface-card);
+}
+
+.app-footer .mono {
+  font-family: var(--font-mono);
+}
+
+/* ---------- Header / TopBar ---------- */
+.app-header {
+  height: 64px;
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: 0 var(--space-7);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.app-header__menu {
+  display: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text-primary);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-header__menu i { width: 26px; height: 26px; }
+
+.app-header__logo {
+  height: 28px;
+}
+
+.app-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  /* O .app-header__title tinha flex:1 e empurrava este bloco; sem ele, margem */
+  margin-left: auto;
+}
+
+.app-header__badge {
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  padding: 4px 10px;
+}
+
+.app-header__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.app-header__icon:hover {
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+}
+
+/* Menu da conta */
+.conta {
+  position: relative;
+  display: flex;
+}
+
+.conta-botao {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  border-radius: var(--radius-full);
+}
+
+.conta-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--gradient-symbol);
+  color: var(--grey-0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.conta-botao:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.conta-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 280px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  z-index: 40;
+}
+
+.conta.aberta .conta-menu { display: block; }
+
+.conta-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border-muted);
+}
+
+.conta-dados { min-width: 0; }
+
+.conta-rotulo {
+  font-family: var(--font-ui);
+  font-size: var(--text-3xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.conta-email {
+  font-size: var(--text-xs);
+  color: var(--text-body);
+  margin-top: var(--space-1);
+  overflow-wrap: anywhere;
+}
+
+.conta-acoes { padding: var(--space-2); }
+
+.conta-acoes a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  color: var(--text-body);
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.conta-acoes a i { color: var(--text-tertiary); }
+
+.conta-acoes a:hover {
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+}
+
+.conta-acoes a.sair:hover {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.conta-acoes a.sair:hover i { color: var(--danger-text); }
+
+/* ---------- SideNav ---------- */
+.app-sidenav {
+  width: 248px;
+  padding-top: var(--space-6);
+  flex: 0 0 248px;
+  background: var(--navy-800);
+  color: var(--text-inverse);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.app-sidenav__group {
+  padding: 0 var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.app-sidenav__title {
+  font-family: var(--font-ui);
+  font-size: var(--text-3xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  color: rgba(255,255,255,.42);
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.app-sidenav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: rgba(255,255,255,.72);
+  text-decoration: none;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.app-sidenav__item i { color: rgba(255,255,255,.55); }
+
+.app-sidenav__item:hover {
+  background: rgba(255,255,255,.08);
+  color: var(--text-inverse);
+}
+
+.app-sidenav__item:hover i { color: rgba(255,255,255,.9); }
+
+.app-sidenav__item.ativo {
+  background: rgba(255,255,255,.12);
+  color: var(--text-inverse);
+  font-weight: var(--weight-semibold);
+}
+
+.app-sidenav__item.ativo i { color: var(--text-inverse); }
+
+.app-sidenav__footer {
+  margin-top: auto;
+  padding: var(--space-5) var(--space-6);
+  font-size: var(--text-2xs);
+  color: rgba(255,255,255,.48);
+}
+
+.app-sidenav__overlay {
+  display: none;
+  position: fixed;
+  inset: 64px 0 0;
+  background: var(--surface-overlay);
+  z-index: 20;
+}
+
+/* ---------- Hero + conteúdo ---------- */
+.hero {
+  background: var(--gradient-mist);
+  padding: var(--space-9) var(--space-8) var(--space-7);
+  border-bottom: 1px solid var(--border-muted);
+}
+
+.hero .crumb {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+
+.hero h1 {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  color: var(--text-primary);
+  margin: 0;
+  line-height: var(--leading-tight);
+}
+
+.hero p {
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+  margin: var(--space-3) 0 0;
+  max-width: 70ch;
+  line-height: var(--leading-normal);
+}
+
+.wrap {
+  padding: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  max-width: var(--container-wide);
+}
+
+/* ---------- Componentes reutilizáveis ---------- */
+
+/* Alert */
+.ds-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.ds-alert i {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: inherit;
+}
+
+.ds-alert--info    { background: var(--info-soft);    color: var(--info-text);    border-color: var(--blue-200); }
+.ds-alert--success { background: var(--success-soft); color: var(--success-text); border-color: var(--teal-100); }
+.ds-alert--warning { background: var(--warning-soft); color: var(--warning-text); border-color: var(--amber-100); }
+.ds-alert--danger  { background: var(--danger-soft);  color: var(--danger-text);  border-color: var(--red-100); }
+
+/* Badge / etiqueta */
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  line-height: 1;
+  padding: 5px 10px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.ds-badge--neutral { background: var(--grey-100); color: var(--grey-700); }
+.ds-badge--brand   { background: var(--navy-100); color: var(--navy-700); }
+.ds-badge--info    { background: var(--info-soft); color: var(--info-text); }
+.ds-badge--success { background: var(--success-soft); color: var(--success-text); }
+.ds-badge--warning { background: var(--warning-soft); color: var(--warning-text); }
+.ds-badge--danger  { background: var(--danger-soft); color: var(--danger-text); }
+
+/* KPIs */
+.ds-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-5);
+}
+
+.ds-kpi {
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6);
+}
+
+.ds-kpi__label {
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.ds-kpi__value {
+  font-family: var(--font-ui);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  margin-top: var(--space-3);
+  line-height: var(--leading-tight);
+}
+
+.ds-kpi__hint {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-top: var(--space-2);
+}
+
+/* Card / painel */
+.ds-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.ds-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border-muted);
+}
+
+.ds-card__head h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.ds-card__body {
+  padding: var(--space-5) var(--space-6);
+}
+
+/* Tabelas */
+.ds-table-wrap {
+  overflow: auto;
+  max-height: 420px;
+}
+
+.ds-table-wrap.completa { max-height: none; }
+
+.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.ds-table th,
+.ds-table td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--border-muted);
+}
+
+.ds-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-sunken);
+  font-family: var(--font-ui);
+  font-size: var(--text-3xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.ds-table td { color: var(--text-body); }
+
+.ds-table tr:hover td { background: var(--surface-hover); }
+
+.ds-table .num,
+.ds-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-ui);
+  white-space: nowrap;
+}
+
+/* Paginação */
+.ds-paginacao {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-muted);
+}
+
+.ds-pag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 12px;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+  text-decoration: none;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.ds-pag:hover {
+  background: var(--surface-sunken);
+  color: var(--brand);
+  border-color: var(--brand);
+}
+
+.ds-pag.atual {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-on);
+}
+
+.ds-pag.desativado {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.ds-pag.desativado:hover {
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  border-color: var(--border-default);
+}
+
+.ds-pag-reticencias {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  color: var(--text-tertiary);
+  padding: 0 var(--space-2);
+}
+
+/* Utilitários */
+.vazio {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* Botão básico */
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: 10px 20px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--brand);
+  background: transparent;
+  color: var(--brand);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.ds-btn:hover {
+  background: var(--brand-soft);
+}
+
+/* ---------- Busca das listagens ---------- */
+.ds-busca {
+  display: flex;
+  /* Quebra em vez de estourar: com seletor de estado e de categoria a barra do
+     dicionario passa de seis controles e nao cabe mais numa linha so. */
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+  color: var(--text-tertiary);
+}
+
+/* Todo campo digitavel da barra usa a mesma casca -- a busca semantica tem
+   texto, numero e select ao lado da busca, e sem isto eles apareciam como
+   caixinhas cruas do navegador junto de um campo estilizado. */
+.ds-busca input[type="search"],
+.ds-busca input[type="text"],
+.ds-busca input[type="number"],
+.ds-busca select {
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--text-body);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 10px var(--space-4);
+}
+
+/* So o campo de busca cresce; os outros tem largura do seu conteudo.
+   O piso de 12rem e o que faz a barra QUEBRAR em vez de espremer a busca: com
+   seis controles no dicionario, `flex: 1` sozinho encolhia o campo ate caber
+   duas letras. */
+.ds-busca input[type="search"] {
+  flex: 1 1 16rem;
+  min-width: 12rem;
+  max-width: 420px;
+}
+
+.ds-busca input[type="text"] {
+  width: 15rem;
+}
+
+.ds-busca input[type="number"] {
+  width: 5.5rem;
+}
+
+.ds-busca input[type="search"]:focus,
+.ds-busca input[type="text"]:focus,
+.ds-busca input[type="number"]:focus,
+.ds-busca select:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: -1px;
+  border-color: var(--brand);
+}
+
+/* ---------- Filtros recolhidos ---------- */
+/* Ocupa a largura toda da barra para os campos cairem na linha de baixo, em vez
+   de disputarem espaco com a busca. */
+.ds-filtros { flex: 1 0 100%; }
+
+.ds-filtros__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: fit-content;
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;                 /* tira o triangulo padrao do <summary> */
+}
+.ds-filtros__toggle::-webkit-details-marker { display: none; }
+.ds-filtros__toggle:hover { color: var(--text-body); background: var(--surface-sunken); }
+
+/* O + vira x quando abre. O seletor pega o <i> e o <svg> que o lucide poe no
+   lugar dele. */
+.ds-filtros[open] .ds-filtros__toggle i,
+.ds-filtros[open] .ds-filtros__toggle svg { transform: rotate(45deg); }
+
+.ds-filtros__conta {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: var(--brand);
+  color: var(--text-on-brand);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.ds-filtros__campos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0 0;
+}
+
+.ds-busca__opcao {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ds-busca__opcao input {
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+.ds-busca__limpar {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.ds-vazio {
+  margin: 0;
+  padding: var(--space-6) 0;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.ds-classe-nota {
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+/* ---------- Grafo de relacionamentos ---------- */
+/* O grafo usa a largura toda; o resto das paginas segue no container-wide */
+.wrap--larga { max-width: none; }
+
+/* O cytoscape mede o container: sem altura explicita ele desenha em 0px */
+.ds-grafo-tela {
+  /* Desconta cabecalho, hero e as bordas do painel para nao gerar rolagem */
+  height: calc(100vh - 300px);
+  min-height: 640px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.ds-grafo-estado {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.ds-grafo-chave.semente { background: #004e84; }
+.ds-grafo-chave.aberto  { background: #00afb9; }
+.ds-grafo-chave.vizinho { background: #233751; }
+
+.ds-grafo-wrap {
+  overflow-x: auto;
+  padding: var(--space-2) 0;
+}
+
+.ds-grafo {
+  min-width: 720px;
+  display: block;
+}
+
+.ds-grafo a text { text-decoration: underline; text-underline-offset: 2px; }
+.ds-grafo a:hover rect { stroke: var(--brand); stroke-width: 2; }
+
+.ds-grafo-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.ds-grafo-chave {
+  width: 14px;
+  height: 3px;
+  flex: none;
+  border-radius: var(--radius-full);
+  margin-right: var(--space-1);
+}
+
+.ds-grafo-chave.entrando { background: var(--brand-controlled); }
+.ds-grafo-chave.saindo   { background: var(--success-text); }
+.ds-grafo-chave.apagada  { background: var(--text-tertiary); opacity: .5; }
+
+/* ---------- Descricao por IA ---------- */
+.ds-ia-resumo {
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--text-body);
+}
+
+.ds-ia-meta {
+  margin: 0 0 var(--space-5);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.ds-ia-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.ds-ia-provedor {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.ds-ia-provedor select {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--text-body);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 8px var(--space-3);
+  cursor: pointer;
+}
+
+.ds-ia-funcao {
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--text-secondary);
+}
+
+/* Os quatro campos da descricao, cada um com o seu rotulo */
+.ds-ia-campos {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-5);
+}
+
+.ds-ia-par {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.ds-ia-campos dt {
+  margin-bottom: var(--space-1);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.ds-ia-campos dd { margin: 0; }
+
+.ds-ia-rotulo {
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.ds-vinculos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.ds-vinculo h4 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.ds-vinculo ul { margin: 0; padding: 0; list-style: none; }
+
+.ds-vinculo li {
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-default);
+  font-size: var(--text-xs);
+}
+
+.ds-vinculo li span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-secondary);
+  line-height: var(--leading-normal);
+}
+
+/* Quantos vizinhos daquele lado -- a lista e completa, entao o numero conta */
+.ds-vinculo-conta {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.ds-vinculo-fk { font-size: var(--text-2xs); color: var(--text-tertiary); }
+
+/* Mesma marcacao do desenho: tabela sem registros entra apagada */
+.ds-vinculo li.vazia a { opacity: 0.5; }
+
+/* ---------- Lote de descricoes ---------- */
+.ds-lote-config {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+.ds-lote-config .ds-campo { max-width: 280px; }
+
+.ds-lote-todas {
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-body);
+}
+
+.ds-lote-todas small { color: var(--text-tertiary); }
+
+.ds-progresso {
+  height: 10px;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-bottom: var(--space-4);
+}
+
+.ds-progresso__barra {
+  height: 100%;
+  background: var(--brand-controlled);
+  transition: width 400ms ease;
+}
+
+/* ---------- Formularios do Setup ---------- */
+.ds-campo {
+  display: block;
+  margin-bottom: var(--space-5);
+  max-width: 560px;
+}
+
+.ds-campo > span {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.ds-campo input,
+.ds-campo select {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--text-body);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 10px var(--space-4);
+}
+
+.ds-campo input:focus,
+.ds-campo select:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: -1px;
+  border-color: var(--brand);
+}
+
+.ds-campo input:disabled {
+  background: var(--surface-sunken);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+}
+
+.ds-campo small {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.ds-form__acoes {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+
+.ds-form__perigo {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border-default);
+}
+
+.ds-btn--perigo {
+  border-color: var(--danger-text);
+  color: var(--danger-text);
+}
+
+.ds-btn--perigo:hover { background: var(--danger-soft); }
+
+/* ---------- Responsividade ---------- */
+@media (max-width: 1023px) {
+  .app-header__menu { display: inline-flex; }
+
+  .app-sidenav {
+    position: fixed;
+    top: 64px;
+    left: 0;
+    bottom: 0;
+    height: auto;
+    z-index: 25;
+    transform: translateX(-100%);
+    transition: transform 200ms var(--ease-out);
+    box-shadow: var(--shadow-lg);
+  }
+
+  body.menu-aberto .app-sidenav { transform: translateX(0); }
+  body.menu-aberto .app-sidenav__overlay { display: block; }
+
+  .hero, .wrap, .app-footer {
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
+  }
+
+  .hero { padding-top: var(--space-7); }
+}
+
+@media (max-width: 560px) {
+  .app-header { gap: var(--space-3); padding: 0 var(--space-5); }
+  .app-header__badge { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidenav { transition: none; }
+}
+
+/* ---------- Mapa semantico ---------- */
+/* O cosmos desenha num canvas WebGL que ele mesmo cria dentro deste elemento:
+   sem altura explicita e position relative, o canvas sai com 0px e os rotulos
+   de tema (absolutos) escapariam para a pagina. */
+.ds-mapa-tela {
+  position: relative;
+  height: calc(100vh - 340px);
+  min-height: 640px;
+  background: #ffffff;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.ds-mapa-form {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-5);
+}
+
+.ds-mapa-form input[type="text"] {
+  flex: 0 1 320px;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-body);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+/* Camada dos nomes de assunto, acompanhando o layout quadro a quadro.
+   pointer-events: none e obrigatorio -- o canvas embaixo precisa receber o
+   hover e o clique dos pontos. */
+.ds-mapa-temas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.ds-mapa-tema {
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-primary);
+  /* O halo branco substitui uma caixa de fundo: o nome fica legivel sobre a
+     malha de arestas sem tapar os pontos que ele descreve. */
+  text-shadow:
+    0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff,
+    0 0 6px #fff, 0 0 6px #fff;
+}
+
+.ds-mapa-dica {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  transform: translate(12px, 12px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 320px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.ds-mapa-dica strong {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.ds-mapa-dica .mono {
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+}
+
+/* As chaves da legenda: as mesmas cores que o WebGL desenha nas arestas.
+   Validadas contra a superficie branca (ΔE de CVD e de visao normal acima do
+   piso nos tres pares); o amarelo fica abaixo de 3:1 de contraste, e por isso a
+   pagina repete o mesmo dado nas duas tabelas de texto abaixo do mapa. */
+.ds-grafo-chave.sim   { background: #c3cbd6; }
+.ds-grafo-chave.ambos { background: #009597; }
+.ds-grafo-chave.fk    { background: #c98a12; }
+.ds-grafo-chave.gemea { background: #c0392f; }

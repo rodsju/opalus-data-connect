@@ -1,0 +1,31 @@
+{# Lista dos provedores de IA cadastrados. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, painel, tabela %}
+
+{% block miolo %}
+{% if aviso %}
+  {% call alerta(tone='danger', icone='alert-circle') %}
+  <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+{% if not senha_ok %}
+  {% call alerta(tone='warning') %}
+  <strong>Senha mestra não configurada.</strong> Defina <span class="mono">IA_SENHA_MESTRA</span>
+  no <span class="mono">.env</span> e rode <span class="mono">make up</span>. Sem ela não dá
+  para cifrar nem decifrar as chaves.
+  {% endcall %}
+{% endif %}
+
+{% call painel('Provedores', total ~ ' cadastrados') %}
+  {% if linhas %}
+  {{ tabela(colunas, linhas, 'completa') }}
+  {% else %}
+  <p class="ds-vazio">Nenhum provedor cadastrado ainda.</p>
+  {% endif %}
+{% endcall %}
+
+<a class="ds-btn" href="/setup/provedores/novo">
+  <i data-lucide="plus" style="width:16px;height:16px;"></i>Novo provedor
+</a>
+{% endblock %}

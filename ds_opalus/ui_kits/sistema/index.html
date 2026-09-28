@@ -1,0 +1,46 @@
+<!-- @dsCard group="Sistema Opalus" viewport="1440x900" name="Sistema Opalus" subtitle="Painel, residentes e prontuário — fluxo clicável." -->
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Sistema Opalus</title><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/lucide@0.544.0/dist/umd/lucide.js"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>html,body{margin:0;height:100%;background:var(--surface-page)}#root{height:100%}</style></head><body><div id="root"></div>
+<script type="text/babel" src="AppShell.jsx"></script>
+<script type="text/babel" src="Dashboard.jsx"></script>
+<script type="text/babel" src="PatientList.jsx"></script>
+<script type="text/babel" src="PatientDetail.jsx"></script>
+<script type="text/babel">
+const { Button } = window.OpalusDesignSystem_2ac06f;
+const TITLES = {
+  dash: ["Painel assistencial", "Consolidado das 4 unidades · atualizado há 4 minutos"],
+  pacientes: ["Residentes", "1.284 residentes ativos"],
+  detalhe: ["Prontuário", "Maria S. Andrade · leito N-104"],
+  prescricoes: ["Prescrições", "Em construção"],
+  indicadores: ["Indicadores", "Em construção"],
+  leitos: ["Mapa de leitos", "Em construção"],
+  config: ["Configurações", "Em construção"],
+};
+function Placeholder({ name }) {
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,color:"var(--text-tertiary)"}}>
+    <img src="../../assets/illustrations/scatter-field.svg" alt="" style={{width:300,opacity:.55}}/>
+    <div style={{fontSize:"var(--text-sm)"}}>Nenhum layout de <strong>{name}</strong> foi fornecido no material de origem.</div>
+  </div>);
+}
+function App() {
+  const [nav, setNav] = React.useState("dash");
+  const view = nav;
+  const [t, s] = TITLES[view] || ["", ""];
+  return (
+    <AppShell nav={view === "detalhe" ? "pacientes" : view} onNav={setNav}>
+      <AppHeader title={t} subtitle={s}
+        actions={view === "dash" ? <Button size="sm" variant="secondary" icon="download">Relatório</Button> : null} />
+      {view === "dash" && <Dashboard onOpenPatient={() => setNav("detalhe")} />}
+      {view === "pacientes" && <PatientList onOpen={() => setNav("detalhe")} />}
+      {view === "detalhe" && <PatientDetail onBack={() => setNav("pacientes")} />}
+      {["prescricoes","indicadores","leitos","config"].includes(view) && <Placeholder name={t} />}
+    </AppShell>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

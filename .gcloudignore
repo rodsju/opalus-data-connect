@@ -1,0 +1,50 @@
+# ==========================
+# Version Control
+# ==========================
+.git/
+.gitignore
+.gcloudignore
+
+# ==========================
+# Python cache
+# ==========================
+__pycache__/
+*.py[cod]
+*.pyo
+
+# ==========================
+# Local environments
+# ==========================
+.venv/
+.env
+
+# ==========================
+# Dev-only
+# ==========================
+Makefile
+README.md
+README_tests.md
+CLAUDE.md
+scripts/
+tests/
+*.log
+.DS_Store
+
+# ==========================
+# Local / Temp
+# ==========================
+*.local
+*.tmp
+
+# ==========================
+# keys
+# ==========================
+gha-creds-*.json
+key.json
+*.pem
+*.p12
+*.pfx
+*.crt
+*.enc
+
+ds_opalus/

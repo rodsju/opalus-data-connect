@@ -1,0 +1,73 @@
+:root{
+  /* Brand */
+  --brand:var(--navy-700);
+  --brand-hover:var(--navy-800);
+  --brand-active:var(--navy-900);
+  --brand-soft:var(--navy-100);
+  --brand-on:var(--grey-0);
+  --brand-accent:var(--navy-300);
+
+  --brand-controlled:var(--blue-600);
+  --brand-controlled-hover:var(--blue-700);
+  --brand-controlled-soft:var(--blue-100);
+  --brand-controlled-accent:var(--blue-300);
+
+  --accent-teal:var(--teal-500);
+  --accent-purple:var(--purple-500);
+
+  /* Text */
+  --text-primary:var(--navy-800);
+  --text-body:var(--grey-700);
+  --text-secondary:var(--grey-500);
+  --text-tertiary:var(--grey-400);
+  --text-inverse:var(--grey-0);
+  --text-inverse-muted:rgba(255,255,255,.72);
+  --text-link:var(--blue-600);
+  --text-link-hover:var(--navy-700);
+  --text-on-brand:var(--grey-0);
+
+  /* Surfaces */
+  --surface-page:var(--grey-25);
+  --surface-card:var(--grey-0);
+  --surface-raised:var(--grey-0);
+  --surface-sunken:var(--grey-50);
+  --surface-subtle:var(--grey-100);
+  --surface-inverse:var(--navy-800);
+  --surface-brand:var(--navy-700);
+  --surface-hover:var(--grey-50);
+  --surface-selected:var(--navy-50);
+  --surface-overlay:rgba(16,27,40,.55);
+
+  /* Borders */
+  --border-default: var(--grey-200); /* @kind color */
+  --border-muted: var(--grey-100); /* @kind color */
+  --border-strong-c: var(--grey-300); /* @kind color */
+  --border-focus: var(--blue-300); /* @kind color */
+  --border-brand: var(--navy-700); /* @kind color */
+
+  /* Status */
+  --success:var(--teal-500);
+  --success-soft:var(--teal-100);
+  --success-text:var(--teal-700);
+  --info:var(--blue-600);
+  --info-soft:var(--blue-100);
+  --info-text:var(--blue-700);
+  --warning:var(--amber-500);
+  --warning-soft:var(--amber-100);
+  --warning-text:var(--amber-700);
+  --danger:var(--red-500);
+  --danger-soft:var(--red-100);
+  --danger-text:var(--red-700);
+
+  /* Data viz sequence — institutional first, complementary after */
+  --chart-1:#233751;
+  --chart-2:#004e84;
+  --chart-3:#66a5cf;
+  --chart-4:#00afb9;
+  --chart-5:#9d7aae;
+  --chart-6:#96b4d6;
+  --chart-7:#663171;
+  --chart-8:#009597;
+  --chart-grid:var(--grey-200);
+  --chart-axis:var(--grey-400);
+}

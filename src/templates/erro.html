@@ -1,0 +1,16 @@
+{# Pagina de erro das rotas de dados; cada rota sobrescreve o bloco resumo. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta %}
+
+{% block miolo %}
+{% call alerta(tone='danger', icone='alert-circle') %}
+  {% block resumo %}Falha ao consultar <strong>{{ alvo }}</strong>.{% endblock %}
+  {% if job_id %} Job do BigQuery: <span class="mono">{{ job_id }}</span>.{% endif %}
+{% endcall %}
+
+<pre>{{ detalhe }}</pre>
+
+<a class="ds-btn" href="{{ voltar }}">
+  <i data-lucide="refresh-cw" style="width:16px;height:16px;"></i>Tentar novamente
+</a>
+{% endblock %}

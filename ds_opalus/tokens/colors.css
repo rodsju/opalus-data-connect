@@ -1,0 +1,69 @@
+/* Base palette. Values marked (manual) are literal from Manual da Marca Opalus, set. 2024. */
+:root{
+  /* Navy — Opalus institutional principal (manual #233751) */
+  --navy-50:#f4f7fb;
+  --navy-100:#e5ecf5;
+  --navy-200:#c8d8ea;
+  --navy-300:#96b4d6; /* manual — Opalus secundária */
+  --navy-400:#6b8fbb;
+  --navy-500:#45688f;
+  --navy-600:#2f4e6f;
+  --navy-700:#233751; /* manual — Opalus principal */
+  --navy-800:#1a2a3e;
+  --navy-900:#101b28;
+
+  /* Blue — Controladas (Geriatrics | Premier | Pleno) */
+  --blue-50:#eff7fc;
+  --blue-100:#d9ecf8;
+  --blue-200:#a8d1ea;
+  --blue-300:#66a5cf; /* manual — controladas secundária */
+  --blue-400:#3b88bd;
+  --blue-500:#1b6da3;
+  --blue-600:#004e84; /* manual — controladas principal */
+  --blue-700:#003a63;
+
+  /* Teal — complementar (saúde, renovação) */
+  --teal-50:#eafafb;
+  --teal-100:#c9f2f4;
+  --teal-300:#00afb9; /* manual */
+  --teal-500:#009597; /* manual */
+  --teal-700:#00696b;
+
+  /* Purple — complementar (sofisticação, acolhimento) */
+  --purple-50:#f6f1f8;
+  --purple-100:#eadff0;
+  --purple-300:#9d7aae; /* manual */
+  --purple-500:#663171; /* manual */
+  --purple-700:#4a2253;
+
+  /* Neutrals — cool-cast greys tuned to the navy */
+  --grey-0:#ffffff;
+  --grey-25:#fafbfc;
+  --grey-50:#f5f7f9;
+  --grey-100:#eceff3;
+  --grey-200:#dde2e9;
+  --grey-300:#c3cbd6;
+  --grey-400:#95a0af;
+  --grey-500:#6b7787;
+  --grey-600:#4f596a;
+  --grey-700:#39424f;
+  --grey-800:#252c36;
+  --grey-900:#141920;
+
+  /* Status — NOT defined in the manual. Derived to sit inside the institutional palette:
+     success borrows the complementary teal, info the controladas blue. See readme.md. */
+  --amber-100:#fdf1d8;
+  --amber-500:#c98a12;
+  --amber-700:#8f5f06;
+  --red-100:#fbe0df;
+  --red-500:#c0392f;
+  --red-700:#8c2620;
+
+  /* Brand gradients — the symbol's degradê. Never re-angle or recolour these. */
+  --gradient-symbol: linear-gradient(135deg,#96b4d6 0%,#5b7ea8 45%,#233751 100%); /* @kind other */
+  --gradient-sphere: radial-gradient(circle at 32% 28%,#c8d8ea 0%,#96b4d6 42%,#3c5a80 100%); /* @kind other */
+  --gradient-navy: linear-gradient(160deg,#233751 0%,#1a2a3e 100%); /* @kind other */
+  --gradient-blue: linear-gradient(160deg,#004e84 0%,#233751 100%); /* @kind other */
+  --gradient-teal: linear-gradient(135deg,#00afb9 0%,#009597 100%); /* @kind other */
+  --gradient-mist: linear-gradient(180deg,#f4f7fb 0%,#e5ecf5 100%); /* @kind other */
+}

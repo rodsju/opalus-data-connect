@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ titulo }} · Opalus Data Connect</title>
+  <link rel="stylesheet" href="/ds-static/styles.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  {% include "partials/header.html" %}
+
+  <div class="app-shell">
+    {% include "partials/menu.html" %}
+
+    <div class="app-main">
+      {% block conteudo %}{% endblock %}
+      <footer class="app-footer">
+        {% block rodape %}
+        Ambiente <span class="mono">{{ ambiente }}</span> · projeto <span class="mono">{{ projeto }}</span>.
+        {% endblock %}
+      </footer>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/lucide@0.544.0/dist/umd/lucide.js"></script>
+  <script src="/static/js/app.js"></script>
+  {# Script pesado (cytoscape) so na pagina que precisa dele #}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

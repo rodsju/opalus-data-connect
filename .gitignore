@@ -1,0 +1,64 @@
+# Editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+*.log
+*.tmp
+
+# Ambientes virtuais
+.venv/
+venv/
+.venv*/
+__pypackages__/
+.python-version
+pip-wheel-metadata/
+
+# Testes / Artefatos locais
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+.tox/
+.pytest_cache/
+.cache/
+/obsolete/
+/tools/
+/sql/
+/commands
+
+# Docker
+# docker-compose.override.yml
+*.pid
+*.seed
+*.bak
+*.backup
+*.tar
+*.tar.gz
+volumes/
+pg_data/
+
+# Segredos / Configs locais
+.env
+.env.*
+*.pem
+*.key
+.npmrc
+secrets.json
+sa-local-dev.json
+
+
+# design_system base
+# vert_design_system/

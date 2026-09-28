@@ -1,0 +1,63 @@
+<header class="app-header">
+  <button class="app-header__menu" id="btn-menu" type="button" aria-label="Abrir menu"
+          aria-controls="menu-lateral" aria-expanded="false">
+    <i data-lucide="menu"></i>
+  </button>
+
+  <img class="app-header__logo" src="/ds-static/assets/logo-horizontal.png" alt="Opalus">
+
+  <div class="app-header__actions">
+    <span class="app-header__badge">{{ ambiente }}</span>
+
+    <button class="app-header__icon" type="button" aria-label="Notificações">
+      <i data-lucide="bell" style="width:20px;height:20px;"></i>
+    </button>
+
+    <button class="app-header__icon" type="button" aria-label="Ajuda">
+      <i data-lucide="help-circle" style="width:20px;height:20px;"></i>
+    </button>
+
+    <div class="conta">
+      <button class="conta-botao" id="btn-conta" type="button" aria-haspopup="true"
+              aria-expanded="false" aria-controls="menu-conta" aria-label="Menu da conta">
+        {% if usuario %}
+        <span class="conta-avatar">{{ usuario.iniciais }}</span>
+        {% else %}
+        <span class="conta-avatar" aria-label="Usuário não identificado">
+          <i data-lucide="user" style="width:16px;height:16px;"></i>
+        </span>
+        {% endif %}
+      </button>
+      <div class="conta-menu" id="menu-conta" role="menu">
+        <div class="conta-cabecalho">
+          {% if usuario %}
+          <div class="conta-avatar">{{ usuario.iniciais }}</div>
+          <div class="conta-dados">
+            <div class="conta-rotulo">Conectado como</div>
+            <div class="conta-email">{{ usuario.email }}</div>
+          </div>
+          {% else %}
+          <div class="conta-dados">
+            <div class="conta-rotulo">Sessão</div>
+            <div class="conta-email">Não identificamos você</div>
+          </div>
+          {% endif %}
+        </div>
+        <div class="conta-acoes">
+          {% if usuario %}
+          <a href="/conta" role="menuitem">
+            <i data-lucide="user" style="width:18px;height:18px;"></i>Conta
+          </a>
+          <a href="/logout" role="menuitem" class="sair">
+            <i data-lucide="log-out" style="width:18px;height:18px;"></i>Sair
+          </a>
+          {% else %}
+          <a href="{{ sso_url }}" role="menuitem">
+            <i data-lucide="log-in" style="width:18px;height:18px;"></i>Entrar
+          </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</header>

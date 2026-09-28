@@ -1,0 +1,18 @@
+/* The symbol's cross arms are rounded at ~0.22 of the arm width — the brand reads soft,
+   never sharp and never fully pill-shaped except on chips and avatars. */
+:root{
+  --radius-none:0;
+  --radius-xs:4px;
+  --radius-sm:6px;
+  --radius-md:10px;
+  --radius-lg:14px;
+  --radius-xl:20px;
+  --radius-2xl:28px;
+  --radius-full:999px;
+
+  --border-width: 1px; /* @kind other */
+  --border-width-thick: 2px; /* @kind other */
+  --border-hairline: 1px solid var(--grey-200); /* @kind other */
+  --border-strong: 1px solid var(--grey-300); /* @kind other */
+  --border-inverse: 1px solid rgba(255,255,255,.16); /* @kind other */
+}

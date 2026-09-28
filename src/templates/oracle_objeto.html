@@ -1,0 +1,196 @@
+{# Detalhe de um objeto: vizinhanca de FKs + descricao por IA + estrutura. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, kpis, painel, tabela %}
+
+{% block descricao %}{{ descricao_pagina }}{% endblock %}
+
+{% block miolo %}
+{{ kpis(cards) }}
+
+{% if aviso %}
+  {% call alerta(tone='danger', icone='alert-circle') %}
+  <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+{% call painel('Relacionamentos', legenda) %}
+  {% if svg %}
+  <div class="ds-grafo-wrap">{{ svg | safe }}</div>
+  <p class="ds-grafo-legenda">
+    <span class="ds-grafo-chave entrando"></span>apontam para esta
+    <span class="ds-grafo-chave saindo"></span>esta aponta para
+    <span class="ds-grafo-chave apagada"></span>tabela vazia
+  </p>
+  {% else %}
+  <p class="ds-vazio">
+    Nenhuma chave estrangeira declarada. Em base legada isso costuma significar
+    relacionamento não declarado, não ausência de relação.
+  </p>
+  {% endif %}
+
+  {# O desenho mostra o nome; a lista detalha a coluna da FK e o motivo da IA. #}
+  {% if svg %}
+  <div class="ds-vinculos">
+    {% for grupo in vinculos %}
+    {% if grupo.itens %}
+    <div class="ds-vinculo">
+      <h4>
+        <span class="ds-grafo-chave {{ grupo.direcao }}"></span>
+        <i data-lucide="{{ grupo.icone }}" style="width:14px;height:14px;"></i>
+        {{ grupo.titulo }}<span class="ds-vinculo-conta">{{ grupo.itens | length }}</span>
+      </h4>
+      <ul>
+        {% for v in grupo.itens %}
+        <li{% if v.vazia %} class="vazia"{% endif %}>
+          <a class="mono" href="/oracle/objetos/{{ v.tabela }}">{{ v.tabela }}</a>
+          <span class="mono ds-vinculo-fk">{{ v.colunas }}{% if v.fks > 1 %} · {{ v.fks }} FKs{% endif %}</span>
+          {% if v.motivo %}<span>{{ v.motivo }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endcall %}
+
+{% call painel('Descrição por IA', ia.provedor if ia else '') %}
+  {% if ia %}
+    {% if ia_vencida %}
+      {% call alerta(tone='warning') %}
+      A tabela foi reextraída depois desta descrição. Regere para refletir a estrutura atual.
+      {% endcall %}
+    {% endif %}
+    {# Os quatro campos que o modelo escreve. Ficam rotulados um a um: campo
+       vazio tem de aparecer como vazio, senao a descricao parece completa. #}
+    <dl class="ds-ia-campos">
+      <div class="ds-ia-par">
+        <div><dt>Rótulo</dt><dd class="ds-ia-rotulo">{{ ia.rotulo or '—' }}</dd></div>
+        <div><dt>Domínio</dt><dd>{{ ia.dominio or '—' }}</dd></div>
+      </div>
+      <div><dt>Resumo</dt><dd class="ds-ia-resumo">{{ ia.resumo or '—' }}</dd></div>
+      <div><dt>Função</dt><dd class="ds-ia-funcao">{{ ia.funcao or '—' }}</dd></div>
+    </dl>
+    {# A ficha da geracao so faz sentido quando houve geracao: texto que entrou
+       pela API nao tem prompt, nem amostra, nem tokens para relatar. #}
+    {% if ia.provedor != 'api' %}
+    <p class="ds-ia-meta">
+      {{ ia.provedor }}/{{ ia.modelo }} ·
+      {{ ia.colunas_descritas }} campos descritos ·
+      {{ ia.linhas_no_prompt }} linhas de amostra no prompt ·
+      {{ ia.tokens_entrada | fmt }} tokens de entrada, {{ ia.tokens_saida | fmt }} de saída ·
+      gerada em {{ ia.gerado_em | fmt }}
+    </p>
+    {% if ia.editado_em %}
+    <p class="ds-ia-meta">
+      editada pela API em {{ ia.editado_em | fmt }}{% if ia.editado_por %} por
+      {{ ia.editado_por }}{% endif %} — o texto acima pode não ser mais o que o
+      modelo escreveu
+    </p>
+    {% endif %}
+    {% else %}
+    <p class="ds-ia-meta">
+      {{ ia.colunas_descritas }} campos descritos ·
+      escrita pela API{% if ia.editado_em %}, em {{ ia.editado_em | fmt }}{% endif %}
+      {%- if ia.editado_por %} por {{ ia.editado_por }}{% endif %} — nunca passou por IA
+    </p>
+    {% endif %}
+  {% else %}
+    <p class="ds-vazio">
+      Ainda não há descrição para este objeto. A geração envia a estrutura e as
+      linhas de amostra para o modelo.
+    </p>
+  {% endif %}
+
+  {% if provedores %}
+  <form class="ds-ia-form" method="post" action="/oracle/objetos/{{ objeto.nome }}/descrever">
+    {% if provedores | length > 1 %}
+    <label class="ds-ia-provedor">
+      Provedor
+      <select name="provedor">
+        {% for p in provedores %}
+        <option value="{{ p.valor }}"
+          {%- if ia and ia.provedor == p.slug and ia.modelo == p.modelo %} selected{% endif %}>
+          {{ p.rotulo }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    {% else %}
+    <input type="hidden" name="provedor" value="{{ provedores[0].valor }}">
+    <span class="ds-ia-provedor">via <strong>{{ provedores[0].rotulo }}</strong></span>
+    {% endif %}
+    <button class="ds-btn" type="submit">
+      <i data-lucide="sparkles" style="width:16px;height:16px;"></i>
+      {{ 'Regerar descrição' if ia else 'Descrever com IA' }}
+    </button>
+  </form>
+  {% endif %}
+
+  {# Vetorizar so faz sentido depois da descricao: e ela o texto que vira vetor. #}
+  {% if ia and provedores_vetor %}
+  <p class="ds-ia-meta">
+    {% if objeto.embedding_modelo %}
+    Vetores: <strong>{{ objeto.embedding_modelo }}</strong> ·
+    {{ objeto.embedding_dim }} dimensões ·
+    {{ objeto.n_vetores | fmt }} de {{ objeto.n_colunas | fmt }} campos ·
+    gerados em {{ objeto.embedding_em | fmt }}
+    {% else %}
+    Ainda sem vetores. A busca semântica só encontra o que foi vetorizado.
+    {% endif %}
+  </p>
+  <form class="ds-ia-form" method="post" action="/oracle/objetos/{{ objeto.nome }}/vetorizar">
+    {% if provedores_vetor | length > 1 %}
+    <label class="ds-ia-provedor">
+      Modelo
+      <select name="provedor">
+        {% for p in provedores_vetor %}
+        <option value="{{ p.valor }}"
+          {%- if objeto.embedding_modelo == p.modelo %} selected{% endif %}>
+          {{ p.rotulo }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    {% else %}
+    <input type="hidden" name="provedor" value="{{ provedores_vetor[0].valor }}">
+    <span class="ds-ia-provedor">via <strong>{{ provedores_vetor[0].rotulo }}</strong></span>
+    {% endif %}
+    <button class="ds-btn" type="submit">
+      <i data-lucide="binary" style="width:16px;height:16px;"></i>
+      {{ 'Revetorizar' if objeto.embedding_modelo else 'Vetorizar' }}
+    </button>
+  </form>
+  {% endif %}
+
+  {% if not provedores %}
+    {% call alerta(tone='info') %}
+    Nenhum provedor de IA disponível. Cadastre um em
+    <a href="/setup/provedores">Setup › AI Providers</a>.
+    {% endcall %}
+  {% endif %}
+{% endcall %}
+
+{% call painel('Colunas', objeto.n_colunas ~ ' colunas') %}
+  {{ tabela(colunas, linhas, 'completa') }}
+{% endcall %}
+
+{% if restricoes[1] %}
+{% call painel('Restrições', restricoes[1] | length) %}
+  {{ tabela(restricoes[0], restricoes[1]) }}
+{% endcall %}
+{% endif %}
+
+{% if indices[1] %}
+{% call painel('Índices', indices[1] | length) %}
+  {{ tabela(indices[0], indices[1]) }}
+{% endcall %}
+{% endif %}
+
+{% if amostra[1] %}
+{% call painel('Amostra', objeto.n_amostra ~ ' linhas coletadas') %}
+  {{ tabela(amostra[0], amostra[1], 'completa') }}
+{% endcall %}
+{% endif %}
+{% endblock %}

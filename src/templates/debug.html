@@ -1,0 +1,26 @@
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, painel, tabela_itens %}
+
+{% block crumb %}Opalus Data Connect &middot; Serviço &middot; Debug{% endblock %}
+{% block cabecalho %}Requisição recebida{% endblock %}
+{% block descricao %}Listamos o que chegou nesta requisição. Use esta página para conferir os cabeçalhos que o proxy injeta antes do serviço.{% endblock %}
+
+{% block miolo %}
+{% call alerta() %}
+Os valores abaixo são os da <strong>sua</strong> requisição — nada aqui é compartilhado entre usuários.
+{% endcall %}
+
+<section class="secao">
+  <div class="secao-head"><h2>Identificação</h2></div>
+  <div class="ds-card">
+    <div class="ds-card__body">{{ tabela_itens(identificacao) }}</div>
+  </div>
+</section>
+
+<section class="secao">
+  <div class="secao-head"><h2>Cabeçalhos</h2></div>
+  {% call painel('Headers HTTP', headers | length ~ ' itens') %}
+  {{ tabela_itens(headers, cabecalho=['Header', 'Valor'], mono=true) }}
+  {% endcall %}
+</section>
+{% endblock %}

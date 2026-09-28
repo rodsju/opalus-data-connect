@@ -1,0 +1,26 @@
+{# Visao Grafo: tabelas com registros que sao referenciadas por outras. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import painel %}
+
+{% block wrap_extra %} wrap--larga{% endblock %}
+
+{% block miolo %}
+{% call painel('Grafo do schema', total ~ ' tabelas no recorte') %}
+  <p class="ds-grafo-estado" id="grafo-estado">Carregando o grafo…</p>
+  <div id="grafo" class="ds-grafo-tela"></div>
+  <p class="ds-grafo-legenda">
+    <span class="ds-grafo-chave semente"></span>raiz (não depende de ninguém)
+    <span class="ds-grafo-chave aberto"></span>aberto
+    <span class="ds-grafo-chave vizinho"></span>vizinho
+    <span>· o tamanho do nó acompanha quantas tabelas dependem dele</span>
+  </p>
+  <button class="ds-btn" type="button" id="grafo-recolher">
+    <i data-lucide="minimize-2" style="width:16px;height:16px;"></i>Recolher tudo
+  </button>
+{% endcall %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<script src="/static/js/grafo.js"></script>
+{% endblock %}

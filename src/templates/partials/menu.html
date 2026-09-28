@@ -1,0 +1,18 @@
+<aside class="app-sidenav" id="menu-lateral" aria-label="Menu principal">
+  {% for grupo in menu %}
+  <nav class="app-sidenav__group">
+    <div class="app-sidenav__title">{{ grupo.titulo }}</div>
+    {% for item in grupo.itens %}
+    <a href="{{ item.href }}" class="app-sidenav__item{% if item.href == caminho %} ativo{% endif %}">
+      <i data-lucide="{{ item.icone }}" style="width:18px;height:18px;"></i>
+      <span>{{ item.rotulo }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+  {% endfor %}
+
+  <div class="app-sidenav__footer">
+    Opalus Data Connect
+  </div>
+</aside>
+<div class="app-sidenav__overlay" id="menu-fundo"></div>

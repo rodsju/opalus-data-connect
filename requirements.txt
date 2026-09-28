@@ -1,0 +1,19 @@
+# Dependencias diretas do runtime. O pytest fica em requirements-dev.txt e nao
+# entra na imagem de producao.
+google-cloud-bigquery>=3.17.2
+google-auth>=2.29.0
+google-api-core>=2.19.1
+fastapi==0.141.1
+# 3.1.6 corrige as CVEs de sandbox escape (CVE-2024-56201/56326, CVE-2025-27516)
+jinja2>=3.1.6
+uvicorn[standard]==0.30.0
+
+# Le o catalogo do schema Oracle gravado por scripts/mapear_oracle.py
+psycopg[binary]>=3.2
+
+# Provedores de IA para as descricoes de campo (src/ia.py): o SDK de cada
+# protocolo suportado por IA_<NOME>_TYPE. O pydantic ja vem com o fastapi.
+anthropic>=0.75
+openai>=1.60
+# Form() da rota de gerar descricao precisa do parser de multipart
+python-multipart>=0.0.9

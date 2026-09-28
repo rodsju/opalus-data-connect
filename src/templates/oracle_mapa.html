@@ -1,0 +1,75 @@
+{# Mapa semantico. O recorte e o agrupamento vem de src/mapa.py; aqui so a tela. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, painel %}
+
+{% block wrap_extra %} wrap--larga{% endblock %}
+
+{% block miolo %}
+{% if not modelo %}
+  {% call alerta(tone='warning') %}
+  <strong>Nada foi vetorizado ainda.</strong> O mapa só desenha o que tem vetor —
+  gere-os em <a href="/setup/lote?tarefa=embedding">Setup › Lote de vetores</a>.
+  {% endcall %}
+{% else %}
+
+<form class="ds-mapa-form" method="get" action="{{ acao }}">
+  {# Com termo o mapa desenha so o que a busca semantica trouxe -- e ai custa uma
+     chamada paga de embedding, como a tela de busca. Sem termo desenha o schema
+     inteiro, de graca. #}
+  <input type="search" name="q" value="{{ termo }}"
+         placeholder="Desenhar só o que casar com… ex.: internação domiciliar"
+         aria-label="Buscar por significado">
+  <input type="number" name="topk" value="{{ topk }}" min="1" max="200"
+         aria-label="Quantas tabelas" title="Quantas tabelas o mapa desenha">
+  {# Backup e snapshot (X..., BKP_) sao 41% do recorte e aparecem como blocos de
+     gemeas. Deixa-los entrar por padrao e proposital: e o achado. Este campo
+     serve para limpa-los DEPOIS de ve-los. #}
+  <input type="text" name="excluir" value="{{ excluir }}"
+         placeholder="Excluir prefixos: x, bkp_" aria-label="Prefixos de tabela a excluir">
+  <button class="ds-btn" type="submit">Aplicar</button>
+  {% if excluir or termo %}<a class="ds-busca__limpar" href="{{ acao }}">Limpar</a>{% endif %}
+</form>
+
+{% call painel('Mapa semântico', modelo) %}
+  <p class="ds-grafo-estado" id="mapa-estado">Calculando a vizinhança semântica…</p>
+  <div id="mapa" class="ds-mapa-tela">
+    <div id="mapa-temas" class="ds-mapa-temas" aria-hidden="true"></div>
+    <div id="mapa-dica" class="ds-mapa-dica" hidden></div>
+  </div>
+
+  <p class="ds-grafo-legenda">
+    <span class="ds-grafo-chave sim"></span>parentesco semântico
+    <span class="ds-grafo-chave ambos"></span>FK que o significado confirma
+    <span class="ds-grafo-chave fk"></span>FK <strong>sem</strong> parentesco
+    <span class="ds-grafo-chave gemea"></span>provável duplicata
+    <span>· o tamanho do nó acompanha quantas tabelas dependem dele</span>
+  </p>
+  <p class="ds-ia-meta">
+    Os blocos são os assuntos do schema: tabelas que falam da mesma coisa se
+    atraem, e o nome escrito sobre o bloco é a tabela mais central dele. A cor
+    fica toda para as arestas — <strong>laranja</strong> é chave estrangeira entre
+    tabelas sem parentesco de significado, <strong>vermelho</strong> é o mesmo
+    conceito modelado duas vezes.
+  </p>
+{% endcall %}
+
+{% call painel('Prováveis duplicatas', 'pares acima de 0,95 de similaridade') %}
+  <div id="mapa-gemeas">
+    <p class="ds-grafo-estado">Carregando…</p>
+  </div>
+{% endcall %}
+
+{% call painel('Os assuntos encontrados') %}
+  <div id="mapa-lista-temas" class="ds-table-wrap">
+    <p class="ds-grafo-estado">Carregando…</p>
+  </div>
+{% endcall %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if modelo %}
+<script type="module" src="/static/js/mapa.js"></script>
+{% endif %}
+{% endblock %}

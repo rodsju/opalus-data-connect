@@ -1,0 +1,101 @@
+{# Busca semantica. O ranking vem pronto de src/busca.py; aqui so a tela. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, painel, tabela %}
+
+{% block miolo %}
+{% if aviso %}
+  {% call alerta(tone='danger', icone='alert-circle') %}
+  <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+{% if not pares %}
+  {% call alerta(tone='info') %}
+  Nenhum provedor de embedding disponível. Cadastre um em
+  <a href="/setup/provedores">Setup › AI Providers</a> com capacidade
+  <span class="mono">embedding</span>.
+  {% endcall %}
+{% elif not espacos %}
+  {% call alerta(tone='warning') %}
+  <strong>Nada foi vetorizado ainda.</strong> A busca semântica só encontra o que tem vetor —
+  gere-os em <a href="/setup/lote?tarefa=embedding">Setup › Lote de vetores</a>.
+  {% endcall %}
+{% endif %}
+
+<form class="ds-busca" method="get" action="{{ acao }}">
+  <i data-lucide="search" style="width:18px;height:18px;"></i>
+  <input type="search" name="q" value="{{ termo }}"
+         placeholder="O que você procura? Ex.: onde ficam as internações"
+         aria-label="Buscar por significado">
+  {% for e in escopos %}
+  <label class="ds-busca__opcao">
+    <input type="radio" name="escopo" value="{{ e }}"{% if escopo == e %} checked{% endif %}>
+    {{ {'tabelas': 'Tabelas', 'campos': 'Campos', 'ambos': 'Ambos'}[e] }}
+  </label>
+  {% endfor %}
+  {# Backup e snapshot (BKP_, X...) enchem o resultado com copias da mesma tabela. #}
+  <input type="text" name="excluir" value="{{ excluir }}"
+         placeholder="Excluir prefixos: bkp_, x" aria-label="Prefixos de tabela a excluir">
+  <input type="number" name="topk" value="{{ topk }}" min="1" max="200"
+         aria-label="Quantos resultados" title="Quantos resultados">
+  {% if pares | length > 1 %}
+  <select name="provedor" aria-label="Modelo de embedding">
+    {% for p in pares %}
+    <option value="{{ p.valor }}"{% if par == p.valor %} selected{% endif %}>{{ p.rotulo }}</option>
+    {% endfor %}
+  </select>
+  {% elif pares %}
+  <input type="hidden" name="provedor" value="{{ pares[0].valor }}">
+  {% endif %}
+  <button class="ds-btn" type="submit">Buscar</button>
+  {% if termo %}<a class="ds-busca__limpar" href="{{ acao }}">Limpar</a>{% endif %}
+</form>
+
+{% if termo and pares %}
+  {% call painel('Resultados', meta.resultados ~ ' encontrados' if meta else '') %}
+    {% if linhas %}
+    {{ tabela(colunas, linhas, 'completa') }}
+    <p class="ds-ia-meta">
+      {{ {'tabelas': 'Tabelas', 'campos': 'Campos', 'ambos': 'Tabelas e campos'}[escopo] }} ·
+      {{ meta.modelo }} · top {{ topk }} ·
+      {% if meta.excluidos %}excluindo <strong>{{ excluir }}</strong> · {% endif %}
+      {{ meta.ms }} ms
+      <br>
+      {# Sem isto o numero engana: 0,65 de cosseno cru parece bom e e ruido. #}
+      <small>
+        Relevância de 0 a 100, calibrada neste catálogo: 0 é o mesmo que dois textos
+        sem relação nenhuma. O nome do objeto casando com o que você digitou também pesa.
+        {% if escopo == 'ambos' %}
+        O número entre parênteses é a relevância do próprio campo — a tabela herda um
+        pouco menos dele, porque um campo casar diz menos do que a tabela inteira casar.
+        {% endif %}
+      </small>
+    </p>
+    {% else %}
+    <p class="ds-vazio">Nada parecido com <strong>{{ termo }}</strong> entre o que já foi vetorizado.</p>
+    {% endif %}
+  {% endcall %}
+{% endif %}
+
+{% if espacos %}
+{% call painel('O que dá para buscar') %}
+  <p class="ds-ia-meta">
+    A busca só alcança o que tem vetor, e só compara vetores do mesmo modelo.
+  </p>
+  <div class="ds-table-wrap">
+    <table class="ds-table">
+      <thead><tr><th>Modelo</th><th class="num">Tabelas</th><th class="num">Campos</th></tr></thead>
+      <tbody>
+        {% for e in espacos %}
+        <tr>
+          <td class="mono">{{ e.modelo }}</td>
+          <td class="num">{{ e.objetos | fmt }}</td>
+          <td class="num">{{ e.colunas | fmt }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endcall %}
+{% endif %}
+{% endblock %}

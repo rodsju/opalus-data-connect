@@ -1,0 +1,50 @@
+{# Visao geral do catalogo: estado da ultima extracao + panorama do schema. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, kpis, painel, tabela, tabela_itens %}
+
+{% block miolo %}
+{% if not extracao %}
+  {% call alerta(tone='warning') %}
+  Nenhuma extração registrada ainda. Rode <span class="mono">make catalogo</span> para
+  popular o catálogo.
+  {% endcall %}
+{% else %}
+
+{{ kpis(cards) }}
+
+{% if erros %}
+  {% call alerta(tone='warning') %}
+  A extração terminou com {{ erros | length }} erro(s):
+  <ul>{% for erro in erros %}<li class="mono">{{ erro }}</li>{% endfor %}</ul>
+  {% endcall %}
+{% endif %}
+
+{% call painel('Tabelas com registros por relacionamento', classes_total ~ ' tabelas') %}
+  <div class="ds-table-wrap">
+    <table class="ds-table">
+      <thead><tr><th>Classificação</th><th class="num">Tabelas</th></tr></thead>
+      <tbody>
+        {% for rotulo, explicacao, quantas, href in classes %}
+        <tr>
+          <td>
+            <a href="{{ href }}">{{ rotulo }}</a>
+            <div class="ds-classe-nota">{{ explicacao }}</div>
+          </td>
+          <td class="num">{{ quantas | fmt }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endcall %}
+
+{% call painel('Última extração', extracao.status) %}
+  {{ tabela_itens(itens, ['Item', 'Valor'], mono=true) }}
+{% endcall %}
+
+{% call painel('Maiores objetos', 'top 10 por registros') %}
+  {{ tabela(colunas, linhas) }}
+{% endcall %}
+
+{% endif %}
+{% endblock %}

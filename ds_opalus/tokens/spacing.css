@@ -1,0 +1,29 @@
+:root{
+  --space-0:0;
+  --space-1:2px;
+  --space-2:4px;
+  --space-3:8px;
+  --space-4:12px;
+  --space-5:16px;
+  --space-6:20px;
+  --space-7:24px;
+  --space-8:32px;
+  --space-9:40px;
+  --space-10:48px;
+  --space-11:64px;
+  --space-12:80px;
+  --space-13:96px;
+  --space-14:128px;
+
+  /* Layout */
+  --container-max: 1200px; /* @kind spacing */
+  --container-wide: 1440px; /* @kind spacing */
+  --gutter:24px;
+  --gutter-lg:40px;
+  --section-y:96px;
+  --section-y-sm:56px;
+
+  /* Área de proteção — clear space around the mark, expressed in units of the
+     symbol's "h" (one cross-arm width). The manual mandates a 1h minimum. */
+  --logo-clearspace: 1em; /* @kind spacing */
+}

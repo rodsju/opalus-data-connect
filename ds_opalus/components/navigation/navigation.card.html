@@ -1,0 +1,17 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Navigation" subtitle="Top bar, tabs, breadcrumbs, application sidebar." -->
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/lucide@0.544.0/dist/umd/lucide.js"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:20px 24px;background:var(--surface-card)}.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.col{display:flex;flex-direction:column;gap:14px}</style></head><body><div id="root"></div>
+<script type="text/babel">const {TopBar, Tabs, Breadcrumbs, SideNav, Button} = window.OpalusDesignSystem_2ac06f;
+function Demo(){const[t,setT]=React.useState('geral'),[p,setP]=React.useState('Semana'),[n,setN]=React.useState('pac');
+return(<div className="col" style={{gap:18}}>
+<div style={{borderRadius:'var(--radius-lg)',overflow:'hidden',border:'var(--border-hairline)'}}><TopBar active="Unidades" links={["Institucional","Unidades","Especialidades","Contato"]} action={<Button size="sm" variant="accent">Área do cliente</Button>} assetBase="../../assets"/></div>
+<Breadcrumbs items={[{label:"Unidades",href:"#"},{label:"Opalus Premier",href:"#"},{label:"Ala Norte"}]}/>
+<div className="row" style={{justifyContent:'space-between',alignItems:'flex-end'}}><Tabs value={t} onChange={setT} items={[{id:'geral',label:'Geral',icon:'layout-dashboard'},{id:'exames',label:'Exames',count:12},{id:'equipe',label:'Equipe'}]} style={{flex:1}}/><Tabs variant="pill" value={p} onChange={setP} items={["Dia","Semana","Mês"]}/></div>
+<div style={{height:150,borderRadius:'var(--radius-lg)',overflow:'hidden',display:'flex'}}><SideNav width={230} value={n} onChange={setN} assetBase="../../assets" items={[{section:'Assistencial'},{id:'pac',label:'Pacientes',icon:'users',count:8},{id:'pre',label:'Prescrições',icon:'clipboard-list'},{id:'ind',label:'Indicadores',icon:'activity'}]}/><div style={{flex:1,background:'var(--surface-sunken)'}}/></div>
+</div>);}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);</script></body></html>

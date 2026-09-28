@@ -1,0 +1,149 @@
+{# Selecao das tabelas e disparo do lote. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, painel, tabela %}
+
+{% block miolo %}
+{% if aviso %}
+  {% call alerta(tone='danger', icone='alert-circle') %}
+  <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+{% if aberto %}
+  {% call alerta(tone='warning') %}
+  O lote <a href="/setup/lote/{{ aberto.id }}">#{{ aberto.id }}</a> ainda está em
+  andamento. Espere terminar ou cancele antes de abrir outro.
+  {% endcall %}
+{% endif %}
+
+<form class="ds-busca" method="get" action="/setup/lote">
+  <input type="hidden" name="tarefa" value="{{ tarefa }}">
+  <i data-lucide="search" style="width:18px;height:18px;"></i>
+  <input type="search" name="q" value="{{ termo }}" placeholder="Filtrar por nome…"
+         aria-label="Filtrar tabelas">
+  {% for f in filtros %}
+  <label class="ds-busca__opcao">
+    <input type="checkbox" name="{{ f.param }}" value="1"{% if f.ativo %} checked{% endif %}>
+    {{ f.rotulo }}
+  </label>
+  {% endfor %}
+  <button class="ds-btn" type="submit">Filtrar</button>
+</form>
+
+<form method="post" action="/setup/lote" id="form-lote"
+      onsubmit="return confirmarLote(this)">
+  {# O recorte tem de viajar junto: form HTML nao aninha, entao os campos do
+     formulario de filtro acima NAO entram neste POST. Sem estes ocultos,
+     "aplicar as N do filtro" chegava sem filtro nenhum no servidor e o lote
+     pegava o catalogo inteiro. #}
+  <input type="hidden" name="tarefa" value="{{ tarefa }}">
+  <input type="hidden" name="q" value="{{ termo }}">
+  {% for f in filtros %}{% if f.ativo %}
+  <input type="hidden" name="{{ f.param }}" value="1">
+  {% endif %}{% endfor %}
+  {% call painel('Tabelas do recorte', total ~ ' encontradas') %}
+    {% if not pares %}
+      {% call alerta(tone='info') %}
+      Nenhum provedor de IA disponível. Cadastre um em
+      <a href="/setup/provedores">Setup › AI Providers</a>.
+      {% endcall %}
+    {% else %}
+    <div class="ds-lote-config">
+      <label class="ds-campo">
+        <span>Provedor e modelo</span>
+        <select name="par">
+          {% for p in pares %}<option value="{{ p.valor }}">{{ p.rotulo }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="ds-campo">
+        <span>Paralelismo</span>
+        <input type="number" name="paralelismo" value="{{ paralelismo }}" min="1" max="16">
+        <small>Tabelas geradas ao mesmo tempo.</small>
+      </label>
+    </div>
+
+    <label class="ds-busca__opcao ds-lote-todas">
+      <input type="checkbox" name="todas" value="1" id="lote-todas">
+      Aplicar às <strong>{{ total | fmt }}</strong> tabelas do filtro
+      <small>— ignora a seleção individual abaixo</small>
+    </label>
+
+    <p class="ds-ia-meta">
+      Estimativa: {{ estimativa.tabelas | fmt }} tabelas · ~{{ estimativa.duracao }} ·
+      ~{{ estimativa.tokens_entrada | fmt }} tokens de entrada,
+      ~{{ estimativa.tokens_saida | fmt }} de saída
+    </p>
+    {% endif %}
+
+    {% if linhas %}
+    <div class="ds-table-wrap completa">
+      <table class="ds-table">
+        <thead>
+          <tr><th></th><th>Objeto</th><th class="num">Registros</th>
+              <th class="num">Colunas</th><th>{{ coluna_feito }}</th></tr>
+        </thead>
+        <tbody>
+          {% for l in linhas %}
+          <tr>
+            <td><input type="checkbox" name="objetos" value="{{ l.id }}"></td>
+            <td><a href="/oracle/objetos/{{ l.nome }}">{{ l.nome }}</a></td>
+            <td class="num">{{ l.num_registros | fmt }}</td>
+            <td class="num">{{ l.n_colunas | fmt }}</td>
+            <td>{{ 'já ' ~ rotulo_feito if l[campo_feito] else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if mostrando < total %}
+    <p class="ds-ia-meta">
+      Mostrando as {{ mostrando }} primeiras de {{ total | fmt }}. Para as demais, use
+      "aplicar às {{ total | fmt }} do filtro".
+    </p>
+    {% endif %}
+    {% else %}
+    <p class="ds-vazio">Nenhuma tabela casa com este filtro.</p>
+    {% endif %}
+  {% endcall %}
+
+  {% if pares and not aberto %}
+  <button class="ds-btn" type="submit">
+    <i data-lucide="play" style="width:16px;height:16px;"></i>Disparar lote
+  </button>
+  {% endif %}
+</form>
+
+{% if recentes %}
+{% call painel('Lotes recentes') %}
+  <div class="ds-table-wrap">
+    <table class="ds-table">
+      <thead><tr><th>#</th><th>Tarefa</th><th>Provedor</th><th>Situação</th>
+                 <th class="num">Progresso</th><th>Criado</th></tr></thead>
+      <tbody>
+        {% for r in recentes %}
+        <tr>
+          <td><a href="/setup/lote/{{ r.id }}">#{{ r.id }}</a></td>
+          <td>{{ rotulos.get(r.tarefa, r.tarefa) }}</td>
+          <td>{{ r.provedor }} · {{ r.modelo }}</td>
+          <td>{{ r.status }}</td>
+          <td class="num">{{ r.concluidos }}/{{ r.itens }}</td>
+          <td>{{ r.criado_em | fmt }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endcall %}
+{% endif %}
+
+<script>
+function confirmarLote(form) {
+  const todas = form.querySelector('#lote-todas').checked;
+  const n = todas ? {{ total }} : form.querySelectorAll('input[name="objetos"]:checked').length;
+  if (!n) { alert('Selecione ao menos uma tabela.'); return false; }
+  if (n < 200) return true;
+  {# O texto vem de setup_lote.TAREFA: com tres tarefas um if/else aqui ja mentia. #}
+  return confirm({{ confirmacao | tojson }}.replace('{n}', n));
+}
+</script>
+{% endblock %}

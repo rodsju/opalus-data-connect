@@ -1,0 +1,76 @@
+{# Progresso de um lote. Recarrega sozinha enquanto roda. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, kpis, painel, tabela %}
+
+{% block miolo %}
+{% if recarregar %}<meta http-equiv="refresh" content="10">{% endif %}
+
+{% if aviso %}
+  {% call alerta(tone='danger', icone='alert-circle') %}
+  <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+{{ kpis([
+  {'rotulo': 'Situação', 'valor': lote.status,
+   'hint': ('atualizando a cada 10s' if recarregar else '')},
+  {'rotulo': 'Concluídas', 'valor': andamento.concluido | fmt,
+   'hint': andamento.percentual ~ '% de ' ~ (andamento.total | fmt)},
+  {'rotulo': 'Falharam', 'valor': andamento.falhou | fmt,
+   'hint': 'veja o motivo abaixo' if andamento.falhou else ''},
+  {'rotulo': 'Restantes', 'valor': (andamento.pendente + andamento.rodando) | fmt,
+   'hint': ('~' ~ restante) if recarregar else ''},
+]) }}
+
+{% call painel('Progresso', andamento.percentual ~ '%') %}
+  <div class="ds-progresso"><div class="ds-progresso__barra"
+       style="width: {{ andamento.percentual }}%"></div></div>
+  <p class="ds-ia-meta">
+    {{ andamento.rodando }} rodando agora ·
+    {{ andamento.tokens_entrada | fmt }} tokens de entrada,
+    {{ andamento.tokens_saida | fmt }} de saída até aqui ·
+    iniciado em {{ lote.iniciado_em | fmt }}
+    {% if lote.terminado_em %} · terminado em {{ lote.terminado_em | fmt }}{% endif %}
+  </p>
+
+  {% if lote.status == 'cancelado' and andamento.pendente %}
+  <form method="post" action="/setup/lote/{{ lote.id }}/retomar">
+    <button class="ds-btn" type="submit">
+      <i data-lucide="play" style="width:16px;height:16px;"></i>
+      Retomar as {{ andamento.pendente }} pendentes
+    </button>
+  </form>
+  {% endif %}
+
+  {% if lote.status in ('pendente', 'rodando') %}
+  <form method="post" action="/setup/lote/{{ lote.id }}/cancelar"
+        onsubmit="return confirm('Cancelar o lote? As tabelas ainda não processadas ficam pendentes.')">
+    <button class="ds-btn ds-btn--perigo" type="submit">
+      <i data-lucide="square" style="width:16px;height:16px;"></i>Cancelar lote
+    </button>
+  </form>
+  {% endif %}
+{% endcall %}
+
+{% if falhas %}
+{% call painel('Falhas', falhas | length) %}
+  <div class="ds-table-wrap completa">
+    <table class="ds-table">
+      <thead><tr><th>Objeto</th><th>Motivo</th></tr></thead>
+      <tbody>
+        {% for f in falhas %}
+        <tr>
+          <td><a href="/oracle/objetos/{{ f.nome }}">{{ f.nome }}</a></td>
+          <td>{{ f.erro }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endcall %}
+{% endif %}
+
+<a class="ds-btn" href="/setup/lote">
+  <i data-lucide="arrow-left" style="width:16px;height:16px;"></i>Voltar
+</a>
+{% endblock %}

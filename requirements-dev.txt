@@ -1,0 +1,10 @@
+# Runtime + o que so o desenvolvimento precisa. Usado so pelo Dockerfile.dev;
+# a imagem de producao instala apenas requirements.txt.
+-r requirements.txt
+
+pytest
+
+# Driver Oracle: so o mapeador (scripts/mapear_oracle.py) fala com o Oracle. O app
+# le o catalogo ja gravado no Postgres, entao a imagem de producao nao precisa dele.
+# O psycopg subiu para requirements.txt quando as paginas /oracle passaram a existir.
+oracledb>=3.0

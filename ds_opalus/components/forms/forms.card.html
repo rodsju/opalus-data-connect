@@ -1,0 +1,20 @@
+<!-- @dsCard group="Components" viewport="700x330" name="Forms" subtitle="Inputs, select, checkbox, radio, switch, field wrapper." -->
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/lucide@0.544.0/dist/umd/lucide.js"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:20px 24px;background:var(--surface-card)}.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.col{display:flex;flex-direction:column;gap:14px}</style></head><body><div id="root"></div>
+<script type="text/babel">const {Field, Input, Textarea, Select, Checkbox, Radio, Switch} = window.OpalusDesignSystem_2ac06f;
+function Demo(){const[c,setC]=React.useState(true),[r,setR]=React.useState('m'),[s,setS]=React.useState(true);
+return(<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'18px 24px'}}>
+<Field label="Nome do paciente" required hint="Como consta no documento"><Input placeholder="Maria Silva" icon="user"/></Field>
+<Field label="Unidade"><Select placeholder="Selecione a unidade" options={["Opalus Premier","Opalus Pleno","Opalus Geriatrics"]}/></Field>
+<Field label="Buscar"><Input placeholder="Buscar prontuário" icon="search" size="sm"/></Field>
+<Field label="CPF" error="Documento inválido"><Input defaultValue="000.000.000-00" invalid/></Field>
+<Field label="Observações" style={{gridColumn:'1 / -1'}}><Textarea rows={2} placeholder="Evolução do turno"/></Field>
+<div className="col" style={{gap:10}}><Checkbox label="Aceito os termos" checked={c} onChange={e=>setC(e.target.checked)}/><Checkbox label="Selecionar todos" indeterminate/><Checkbox label="Desabilitado" disabled/></div>
+<div className="col" style={{gap:10}}><div className="row" style={{gap:20}}><Radio name="t" value="m" label="Manhã" checked={r==='m'} onChange={()=>setR('m')}/><Radio name="t" value="v" label="Tarde" checked={r==='v'} onChange={()=>setR('v')}/></div><Switch label="Alertas por e-mail" checked={s} onChange={e=>setS(e.target.checked)}/><Switch label="Modo somente leitura" checked={false} onChange={()=>{}}/></div>
+</div>);}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);</script></body></html>

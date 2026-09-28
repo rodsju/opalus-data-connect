@@ -1,0 +1,37 @@
+{# Paginacao server-side: numeros vem prontos de layout.numeros_visiveis() e
+   pag.base ja traz a rota da listagem com o filtro de busca preservado. #}
+{% macro link(numero) %}{{ pag.base }}pagina={{ numero }}&amp;por_pagina={{ pag.por_pagina }}{% endmacro %}
+
+<nav class="ds-paginacao" aria-label="Paginação da listagem">
+  {% if pag.pagina > 1 %}
+  <a class="ds-pag" href="{{ link(pag.pagina - 1) }}">
+    <i data-lucide="chevron-left" style="width:16px;height:16px;"></i>Anterior
+  </a>
+  {% else %}
+  <span class="ds-pag desativado" aria-disabled="true">
+    <i data-lucide="chevron-left" style="width:16px;height:16px;"></i>Anterior
+  </span>
+  {% endif %}
+
+  <span class="ds-pag-numeros">
+    {% for numero in pag.numeros %}
+    {% if numero is none %}
+    <span class="ds-pag-reticencias">…</span>
+    {% elif numero == pag.pagina %}
+    <span class="ds-pag atual" aria-current="page">{{ numero }}</span>
+    {% else %}
+    <a class="ds-pag" href="{{ link(numero) }}">{{ numero }}</a>
+    {% endif %}
+    {% endfor %}
+  </span>
+
+  {% if pag.pagina < pag.paginas %}
+  <a class="ds-pag" href="{{ link(pag.pagina + 1) }}">
+    Próxima<i data-lucide="chevron-right" style="width:16px;height:16px;"></i>
+  </a>
+  {% else %}
+  <span class="ds-pag desativado" aria-disabled="true">
+    Próxima<i data-lucide="chevron-right" style="width:16px;height:16px;"></i>
+  </span>
+  {% endif %}
+</nav>

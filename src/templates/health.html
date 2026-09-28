@@ -1,0 +1,57 @@
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, etiqueta, tabela_itens %}
+
+{% block crumb %}Opalus Data Connect &middot; Serviço &middot; Health{% endblock %}
+{% block cabecalho %}Saúde do serviço{% endblock %}
+{% block descricao %}Mostramos o estado do serviço e das dependências que ele usa para responder às consultas.{% endblock %}
+
+{% block miolo %}
+{% if catalogo_ok and oracle_ok %}
+{% call alerta(icone='check-circle') %}
+<strong>Tudo certo.</strong> O serviço responde, alcança o catálogo e alcança o Oracle de origem.
+{% endcall %}
+{% elif catalogo_ok %}
+{% call alerta(tone='warning', icone='alert-triangle') %}
+<strong>O catálogo responde, mas o Oracle de origem não.</strong>
+As páginas continuam funcionando — elas leem do catálogo. O que não dá para fazer
+agora é remapear (<code>make catalogo</code>, <code>make amostras</code>).
+{% endcall %}
+{% else %}
+{% call alerta(tone='danger', icone='alert-circle') %}
+<strong>O serviço está no ar, mas o catálogo não respondeu.</strong>
+As páginas do Oracle vão falhar até isso normalizar.
+{% endcall %}
+{% endif %}
+
+<section class="secao">
+  <div class="secao-head"><h2>Verificações</h2></div>
+  <div class="ds-kpis">
+    {% for check in checagens %}
+    <div class="ds-card">
+      <div class="ds-card__head">
+        <h3>{{ check.titulo }}</h3>
+        {% if check.ok %}
+        {{ etiqueta({'rotulo':'OK', 'classe':'tag-success'}) }}
+        {% elif check.critico %}
+        {{ etiqueta({'rotulo':'Falhou', 'classe':'tag-erro'}) }}
+        {% else %}
+        {# Nao critico: a dependencia caiu, mas o servico segue servindo. #}
+        {{ etiqueta({'rotulo':'Indisponível', 'classe':'tag-aviso'}) }}
+        {% endif %}
+      </div>
+      <div class="ds-card__body">
+        <p class="vazio" style="line-height:var(--leading-normal);">{{ check.detalhe }}</p>
+        {% if check.ms is not none %}<div class="ds-kpi__hint">{{ '%.0f' % check.ms }} ms</div>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="secao">
+  <div class="secao-head"><h2>Configuração</h2></div>
+  <div class="ds-card">
+    <div class="ds-card__body">{{ tabela_itens(config) }}</div>
+  </div>
+</section>
+{% endblock %}

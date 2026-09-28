@@ -1,0 +1,14 @@
+{# Casca das paginas de conteudo: hero + area principal. #}
+{% extends "base.html" %}
+
+{% block conteudo %}
+<section class="hero">
+  <div class="crumb">{% block crumb %}{{ crumb }}{% endblock %}</div>
+  <h1>{% block cabecalho %}{{ titulo }}{% endblock %}</h1>
+  <p>{% block descricao %}{{ descricao }}{% endblock %}</p>
+</section>
+
+<main class="wrap{% block wrap_extra %}{% endblock %}">
+  {% block miolo %}{% endblock %}
+</main>
+{% endblock %}

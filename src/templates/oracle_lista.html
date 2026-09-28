@@ -1,0 +1,61 @@
+{# Uma template para as sete listagens de /oracle; a secao vem pronta de oracle.py. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import painel, tabela %}
+
+{% block miolo %}
+<form class="ds-busca" method="get" action="{{ acao }}">
+  <i data-lucide="search" style="width:18px;height:18px;"></i>
+  <input type="search" name="q" value="{{ termo }}" placeholder="Filtrar por nome…"
+         aria-label="Filtrar {{ titulo | lower }}">
+  <input type="hidden" name="por_pagina" value="{{ pag.por_pagina }}">
+  <button class="ds-btn" type="submit">Filtrar</button>
+  {% if termo or filtros | selectattr('valor') | first %}
+  <a class="ds-busca__limpar" href="{{ acao }}">Limpar</a>
+  {% endif %}
+
+  {% set marcados = filtros | selectattr('valor') | list %}
+  {# <details> e nao JavaScript: campo dentro de details fechado continua sendo
+     enviado no submit (so `disabled` exclui), entao o recolhimento e so visual.
+     Nasce ABERTO quando ha filtro ativo -- painel fechado escondendo recorte faz
+     a pessoa ler o total como se fosse o do catalogo inteiro. #}
+  <details class="ds-filtros"{% if marcados %} open{% endif %}>
+    <summary class="ds-filtros__toggle">
+      <i data-lucide="plus" style="width:16px;height:16px;"></i>
+      Filtros
+      {% if marcados %}<span class="ds-filtros__conta">{{ marcados | length }}</span>{% endif %}
+    </summary>
+    {# Tres especies de controle: o checkbox de sempre, e os dois que existem
+       porque campo de tres estados e filtro por valor nao cabem num checkbox. #}
+    <div class="ds-filtros__campos">
+      {% for f in filtros %}
+      <label class="ds-busca__opcao">
+        {% if f.tipo == 'flag' %}
+        <input type="checkbox" name="{{ f.param }}" value="1"
+               {%- if f.valor %} checked{% endif %}>
+        {{ f.rotulo }}
+        {% else %}
+        {{ f.rotulo }}
+        <select name="{{ f.param }}" aria-label="{{ f.rotulo }}">
+          {% for valor, rotulo in f.opcoes %}
+          <option value="{{ valor }}"{% if valor == f.valor %} selected{% endif %}>{{ rotulo }}</option>
+          {% endfor %}
+        </select>
+        {% endif %}
+      </label>
+      {% endfor %}
+    </div>
+  </details>
+</form>
+
+{% call painel(titulo, faixa) %}
+  {% if linhas %}
+  {{ tabela(colunas, linhas, 'completa') }}
+  {% else %}
+  <p class="ds-vazio">Nenhum registro{% if termo %} para <strong>{{ termo }}</strong>{% endif %}.</p>
+  {% endif %}
+{% endcall %}
+
+{% if pag.paginas > 1 %}
+{% include "partials/paginacao.html" %}
+{% endif %}
+{% endblock %}

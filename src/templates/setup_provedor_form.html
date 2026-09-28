@@ -1,0 +1,114 @@
+{# Formulario de criar/editar provedor. A chave e write-only: nunca volta preenchida. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, painel %}
+
+{% set v = valores if valores else (provedor or {}) %}
+
+{% block miolo %}
+{% if aviso %}
+  {% call alerta(tone='danger', icone='alert-circle') %}
+  <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+{% if not senha_ok %}
+  {% call alerta(tone='warning') %}
+  <strong>Senha mestra não configurada.</strong> Defina
+  <span class="mono">IA_SENHA_MESTRA</span> no <span class="mono">.env</span> antes de gravar.
+  {% endcall %}
+{% endif %}
+
+<form class="ds-form" method="post"
+      action="{{ '/setup/provedores/' ~ provedor.slug if provedor else '/setup/provedores' }}">
+  {% call painel(provedor.nome if provedor else 'Novo provedor') %}
+  <label class="ds-campo">
+    <span>Nome</span>
+    <input type="text" name="nome" value="{{ v.nome or '' }}" required
+           placeholder="OpenAI GPT-5">
+    <small>O slug é derivado daqui.</small>
+  </label>
+
+  {% if provedor %}
+  <label class="ds-campo">
+    <span>Slug</span>
+    <input type="text" value="{{ provedor.slug }}" disabled>
+    <small>Imutável: as descrições já geradas apontam para ele.</small>
+  </label>
+  {% endif %}
+
+  <label class="ds-campo">
+    <span>Type</span>
+    <select name="tipo">
+      {% for t in tipos %}
+      <option value="{{ t }}"{% if v.tipo == t %} selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+    <small>O protocolo, não a marca: Groq, OpenRouter e Ollama usam <code>openai</code>.</small>
+  </label>
+
+  <label class="ds-campo">
+    <span>Capability</span>
+    <select name="capacidade">
+      {% for c in capacidades %}
+      <option value="{{ c }}"{% if (v.capacidade or 'llm') == c %} selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+    <small>
+      <code>llm</code> escreve as descrições; <code>embedding</code> as vetoriza.
+      Um modelo não faz os dois — cadastre um provedor para cada.
+      <code>embedding</code> exige type <code>openai</code>.
+    </small>
+  </label>
+
+  <label class="ds-campo">
+    <span>URL</span>
+    <input type="text" name="url" value="{{ v.url or '' }}"
+           placeholder="https://api.groq.com/openai/v1">
+    <small>Opcional. Só para endpoint compatível.</small>
+  </label>
+
+  <label class="ds-campo">
+    <span>Models</span>
+    <input type="text" name="modelos" value="{{ v.modelos or '' }}" required
+           placeholder="gpt-5, gpt-5-mini, o3">
+    <small>Separados por vírgula. Cada um vira uma opção na página do objeto.</small>
+  </label>
+
+  <label class="ds-campo">
+    <span>Key</span>
+    <input type="password" name="chave" autocomplete="off"
+           {% if not provedor %}required{% endif %}>
+    <small>
+      {% if provedor %}
+      Deixe em branco para manter a atual (<span class="mono">••••{{ provedor.chave_final }}</span>).
+      {% else %}
+      Cifrada com a senha mestra antes de ir para o banco.
+      {% endif %}
+    </small>
+  </label>
+
+  <label class="ds-busca__opcao">
+    <input type="checkbox" name="ativo" value="1"
+           {% if not provedor or v.ativo %}checked{% endif %}>
+    Ativo
+  </label>
+  {% endcall %}
+
+  <div class="ds-form__acoes">
+    <button class="ds-btn" type="submit">
+      <i data-lucide="save" style="width:16px;height:16px;"></i>Gravar
+    </button>
+    <a class="ds-busca__limpar" href="/setup/provedores">Cancelar</a>
+  </div>
+</form>
+
+{% if provedor %}
+<form class="ds-form__perigo" method="post"
+      action="/setup/provedores/{{ provedor.slug }}/excluir"
+      onsubmit="return confirm('Excluir o provedor {{ provedor.slug }}? As descrições já geradas por ele continuam no catálogo.')">
+  <button class="ds-btn ds-btn--perigo" type="submit">
+    <i data-lucide="trash-2" style="width:16px;height:16px;"></i>Excluir provedor
+  </button>
+</form>
+{% endif %}
+{% endblock %}

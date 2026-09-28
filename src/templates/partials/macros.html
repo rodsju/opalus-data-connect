@@ -1,0 +1,96 @@
+{# Blocos visuais reaproveitados pelas paginas de dados — design system Opalus #}
+
+{# Resolve o tom a partir de tone ou da classe legada VERT #}
+{% macro _tom(tone, classe) %}
+{%- if tone %}{{ tone }}
+{%- elif 'erro' in classe or 'danger' in classe %}danger
+{%- elif 'sucesso' in classe or 'success' in classe %}success
+{%- elif 'aviso' in classe or 'warning' in classe %}warning
+{%- else %}info
+{%- endif -%}
+{% endmacro %}
+
+{# Alerta com icone Lucide. Parametros: tone, icone. #}
+{% macro alerta(tone='info', icone='') %}
+{%- set tom = _tom(tone, tone) -%}
+{%- set icone_padrao = {'info':'info','success':'check-circle','warning':'alert-triangle','danger':'alert-circle'}[tom] -%}
+<div class="ds-alert ds-alert--{{ tom }}">
+  <i data-lucide="{{ icone or icone_padrao }}" style="width:20px;height:20px;"></i>
+  <div>{{ caller() }}</div>
+</div>
+{% endmacro %}
+
+{# Etiqueta colorida: {rotulo, classe} #}
+{% macro etiqueta(tag) %}
+{%- set tom = _tom('', tag.classe) -%}
+<span class="ds-badge ds-badge--{{ tom }}">{{ tag.rotulo }}</span>
+{% endmacro %}
+
+{# cards: [{rotulo, valor, hint}] — valor e hint ja chegam formatados #}
+{% macro kpis(cards) %}
+<div class="ds-kpis">
+  {% for card in cards %}
+  <div class="ds-kpi">
+    <div class="ds-kpi__label">{{ card.rotulo }}</div>
+    <div class="ds-kpi__value">{{ card.valor }}</div>
+    {% if card.hint %}<div class="ds-kpi__hint">{{ card.hint }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{# Card com cabecalho e etiqueta de contagem; o corpo vem do {% call %} #}
+{% macro painel(titulo, etiqueta='') %}
+<div class="ds-card">
+  <div class="ds-card__head">
+    <h3>{{ titulo }}</h3>
+    {% if etiqueta %}
+    <span class="ds-badge ds-badge--brand">
+      <i data-lucide="list" style="width:12px;height:12px;"></i>
+      {{ etiqueta }}
+    </span>
+    {% endif %}
+  </div>
+  <div class="ds-card__body">
+    {{ caller() }}
+  </div>
+</div>
+{% endmacro %}
+
+{# Tabela generica: colunas [{rotulo, num}], linhas [[{valor, num, href}]] #}
+{% macro tabela(colunas, linhas, classe='') %}
+<div class="ds-table-wrap{% if classe %} {{ classe }}{% endif %}">
+  <table class="ds-table">
+    <thead>
+      <tr>{% for coluna in colunas %}<th{% if coluna.num %} class="num"{% endif %}>{{ coluna.rotulo }}</th>{% endfor %}</tr>
+    </thead>
+    <tbody>
+      {% for linha in linhas %}
+      <tr>{% for celula in linha %}<td{% if celula.num %} class="num"{% endif %}>{% if celula.href %}<a href="{{ celula.href }}">{{ celula.valor | fmt }}</a>{% else %}{{ celula.valor | fmt }}{% endif %}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{# Tabela simples de pares rotulo/valor (health e debug) #}
+{% macro tabela_itens(linhas, cabecalho=['Item', 'Valor'], mono=false) %}
+<div class="ds-table-wrap">
+  <table class="ds-table">
+    <thead>
+      <tr>
+        <th>{{ cabecalho[0] }}</th>
+        <th>{{ cabecalho[1] }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rotulo, valor in linhas %}
+      <tr>
+        <td{% if mono %} class="mono"{% endif %}>{{ rotulo }}</td>
+        <td{% if mono %} class="mono"{% endif %}>{{ valor }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
