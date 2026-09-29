@@ -62,3 +62,7 @@ sa-local-dev.json
 
 # design_system base
 # vert_design_system/
+# Conciliação: a planilha e os CSVs de carga têm nome de paciente. As sementes
+# de premissas (data/conciliacao/*.csv) não têm e ficam versionadas.
+base_glosa*.xlsx
+/*.csv

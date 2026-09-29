@@ -1,0 +1,16 @@
+{% import "reports/_macros.html" as rp %}
+<div class="rp-ranking">
+  {% for l in bloco.linhas %}
+  <div class="rp-ranking__item">
+    <span class="rp-ranking__pos{% if loop.index <= 3 %} rp-ranking__pos--top{% endif %}">{{ loop.index }}</span>
+    <div class="rp-ranking__info">
+      <div class="rp-ranking__titulo"><span class="mono">{{ l.motivo }}</span>{% if l.descricao %} · {{ l.descricao | capitalize }}{% endif %}{% if l.vigente == false %} {{ rp.badge("fora da versão vigente", "neutral") }}{% endif %}</div>
+      <div class="rp-ranking__sub">{{ l.linhas | valor('int') }} linhas · {{ l.pct | pct }}{% if l.classificacao %} · {{ rp.badge(l.classificacao, 'neutral') }}{% endif %}</div>
+      <div class="rp-ranking__barra rp-ranking__barra--coral"><span style="width: {{ (l.barra or 0) | round(1) }}%"></span></div>
+    </div>
+    <span class="rp-ranking__valor">{{ l.glosa | moeda_curta }}</span>
+  </div>
+  {% endfor %}
+  {% if bloco.demais %}<div class="rp-sub">+ {{ bloco.demais }} códigos</div>{% endif %}
+  <a class="rp-btn rp-btn--ghost" href="/reports/glosa-motivos"><i data-lucide="arrow-right"></i>Relatório completo de motivos</a>
+</div>

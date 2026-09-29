@@ -1,0 +1,30 @@
+{% import "reports/_macros.html" as rp %}
+{% set base = '/reports/glosa-motivos?mes=' ~ (filtros.mes if filtros is defined and filtros else '') ~ '&unidade=' ~ ((filtros.unidade if filtros is defined and filtros else '') | urlencode) ~ '&convenio=' ~ ((filtros.convenio if filtros is defined and filtros else '') | urlencode) %}
+<div class="rp-destaques">
+  <span><b>{{ bloco.linhas | length }}</b> códigos de glosa</span>
+  <span>Recuperado <b>{{ bloco.total.pct_recuperado | pct }}</b> da glosa</span>
+  <span>Perda <b>{{ bloco.total.pct_perda | pct }}</b></span>
+  {% if bloco.sem_descricao %}<span>{{ bloco.sem_descricao }} sem descrição na Tabela 38</span>{% endif %}
+</div>
+<div class="rp-tabela-wrap" style="max-height: 560px">
+  <table class="rp-tabela rp-tabela--compacta">
+    <thead><tr><th>Motivo</th><th>Origem</th><th class="num">Linhas</th><th class="num">Glosa</th><th class="num">Part.</th><th class="num">Recorrido</th><th class="num">Recuperado</th><th class="num">Perda</th><th class="num">Em aberto</th></tr></thead>
+    <tbody>
+      {% for l in bloco.linhas %}
+      <tr>
+        <td><a class="mono" href="{{ base }}&motivo={{ l.motivo | urlencode }}">{{ l.motivo }}</a> <a class="rp-sub" href="/consultas/glosas?motivo={{ l.motivo | urlencode }}" title="ver os casos">casos →</a>
+          {% if l.descricao %}<div class="rp-sub">{{ l.descricao | capitalize }}{% if l.vigente == false %} · fora da versão vigente{% endif %}</div>{% endif %}</td>
+        <td>{% if l.classificacao %}{{ rp.badge(l.classificacao, 'neutral') }}{% endif %}</td>
+        <td class="num">{{ l.linhas | valor('int') }}</td>
+        <td class="num rp-neg">{{ l.glosa | moeda_curta }}</td>
+        {{ rp.share(l.pct, 'coral') }}
+        <td class="num">{{ l.pct_recursado | pct }}</td>
+        {{ rp.share(l.pct_recuperado, 'teal') }}
+        {{ rp.share(l.pct_perda, 'magenta') }}
+        {{ rp.share(l.pct_aberto, 'amber') }}
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td>Total</td><td></td><td class="num">{{ bloco.total.linhas | valor('int') }}</td><td class="num">{{ bloco.total.glosa | moeda_curta }}</td><td></td><td></td><td class="num">{{ bloco.total.recuperado_bruto | moeda_curta }}</td><td class="num">{{ bloco.total.perda | moeda_curta }}</td><td class="num">{{ bloco.total.em_aberto | moeda_curta }}</td></tr></tfoot>
+  </table>
+</div>

@@ -1,0 +1,17 @@
+{% extends "conciliacao/_base.html" %}
+{% set icone_pagina = 'function-square' %}
+{% set descricao_pagina = 'Como o app reproduz cada coluna de fórmula da aba BASE OPALUS. O texto vem do próprio código (src/conciliacao/regras.py), então nunca fica desatualizado.' %}
+{% set chips_pagina = [] %}
+
+{% block pagina %}
+<div class="rp-grid">
+  {% for r in regras %}
+  <section class="rp-bloco rp-bloco--{{ 'inteira' if r.coluna in ['STATUS', 'Cruzamento com o ERP'] else 'meia' }}">
+    <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="function-square"></i></span><h2>{{ r.coluna }}</h2><span class="rp-bloco__onde mono">{{ r.funcao }}</span></header>
+    <div class="rp-bloco__corpo"><div class="rp-codigo">{{ r.doc }}</div>
+    {% if explicacoes.get(r.funcao.replace('status_recebimento', 'status').replace('faixa_aging', 'aging')) %}<p class="rp-sub">Quando diverge da planilha: {{ explicacoes.get(r.funcao.replace('status_recebimento', 'status').replace('faixa_aging', 'aging')) }}.</p>{% endif %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% import "reports/_macros.html" as rp %}
+{{ rp.grafico(b.slug, bloco.grafico, 320) }}
+<details class="rp-numeros">
+  <summary>Ver números</summary>
+  <div class="rp-tabela-wrap">
+  <table class="rp-tabela rp-tabela--compacta">
+    <thead><tr><th>Competência</th><th class="num">Linhas</th><th class="num">Fatura (Oracle)</th><th class="num">Glosa</th><th class="num">Taxa</th><th class="num">Recursado</th><th class="num">Recuperado</th><th class="num">Mantida</th></tr></thead>
+    <tbody>
+      {% for l in bloco.linhas %}
+      <tr><td>{{ bloco.rotulos[loop.index0] }}</td><td class="num">{{ l.linhas | valor('int') }}</td><td class="num">{{ l.faturado | moeda_curta }}</td><td class="num rp-neg">{{ l.glosa | moeda_curta }}</td><td class="num">{{ l.taxa_glosa | pct }}</td><td class="num">{{ l.recursado | moeda_curta }}</td><td class="num rp-pos-txt">{{ l.recuperado_bruto | moeda_curta }}</td><td class="num">{{ l.mantida | moeda_curta }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>

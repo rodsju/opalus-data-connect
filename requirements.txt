@@ -10,6 +10,9 @@ uvicorn[standard]==0.30.0
 
 # Le o catalogo do schema Oracle gravado por scripts/mapear_oracle.py
 psycopg[binary]>=3.2
+# Driver Oracle: o mapeador e os /reports (src/reports/fonte_oracle.py) consultam
+# o Oracle ao vivo. Modo thin, sem Instant Client.
+oracledb>=3.0
 
 # Provedores de IA para as descricoes de campo (src/ia.py): o SDK de cada
 # protocolo suportado por IA_<NOME>_TYPE. O pydantic ja vem com o fastapi.

@@ -126,6 +126,8 @@ Calm and clinical. 140ms for colour and hover, 220ms for transforms and toggles,
 ### Data visualisation
 Baseline rule only — no gridlines, no plot border, no boxed legend; legends are inline dot-and-label rows. The categorical sequence `--chart-1…8` runs institutional-first (navy → blue → light blue → teal → purple). Single-series charts use one colour (navy) with at most one bar promoted to teal to mark the point being made.
 
+**Vivid (relatórios).** Para as telas de `/reports` existe uma segunda família, `--vivid-*` (blue, cyan, teal, violet, magenta, coral, amber, green, cada uma com `-soft`), e a sequência `--chart-vivid-1…8`. É mais saturada de propósito: separa séries empilhadas e dá peso aos KPIs. Uso restrito a dados — gráficos, chips de KPI (`--gradient-kpi-*`), barras de participação e o hero de relatório (`--gradient-report`). Botões, menu, links e texto continuam na paleta institucional. Semântica em relatório: `--report-positive` (teal) para bom/recuperado, `--report-negative` (coral) para glosa/perda, `--report-attention` (amber) para pendente.
+
 ---
 
 ## ICONOGRAPHY

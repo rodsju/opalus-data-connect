@@ -1,0 +1,3 @@
+{% import "reports/_macros.html" as rp %}
+{% if bloco.grafico_ht %}<h3 class="rp-subtitulo">Hospital de transição</h3>{{ rp.grafico(b.slug ~ '-ht', bloco.grafico_ht, 280) }}{% endif %}
+{% if bloco.grafico_hc %}<h3 class="rp-subtitulo">Home care</h3>{{ rp.grafico(b.slug ~ '-hc', bloco.grafico_hc, 220) }}{% endif %}

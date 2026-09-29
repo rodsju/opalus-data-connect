@@ -1,0 +1,11 @@
+{% import "reports/_macros.html" as rp %}
+{{ rp.grafico(b.slug, bloco.grafico, 240) }}
+<table class="rp-tabela rp-tabela--compacta">
+  <thead><tr><th>Motivo</th><th class="num">Itens</th><th class="num">Glosa</th><th class="num">Part.</th></tr></thead>
+  <tbody>
+    {% for l in bloco.linhas %}
+    <tr><td><i class="rp-dot rp-dot--{{ l.tom }}"></i>{{ l.motivo }}</td><td class="num">{{ l.itens | valor('int') }}</td><td class="num">{{ l.valor_glosa | moeda_curta }}</td>{{ rp.share(l.pct, l.tom) }}</tr>
+    {% endfor %}
+  </tbody>
+  <tfoot><tr><td>Total</td><td class="num">{{ bloco.total.itens | valor('int') }}</td><td class="num">{{ bloco.total.valor_glosa | moeda_curta }}</td><td></td></tr></tfoot>
+</table>

@@ -1,0 +1,3 @@
+{% import "reports/_macros.html" as rp %}
+<div class="rp-destaques"><span><b>{{ bloco.total }}</b> leitos de transição</span><a class="rp-sub" href="/conciliacao/premissas?tipo=leitos">editar parâmetro →</a></div>
+{{ rp.grafico(b.slug, bloco.grafico, 260) }}

@@ -1,0 +1,23 @@
+{% import "reports/_macros.html" as rp %}
+{{ rp.kpis(bloco.cards) }}
+{{ rp.grafico(b.slug, bloco.grafico, 300) }}
+<details class="rp-numeros" open>
+  <summary>Ver números</summary>
+  <table class="rp-tabela">
+    <thead><tr><th>Unidade</th><th class="num">Fatura operadora</th><th class="num">Glosa</th><th class="num">Sustentada</th><th class="num">Recuperada</th><th class="num">Itens glosados</th><th class="num">Taxa</th></tr></thead>
+    <tbody>
+      {% for l in bloco.linhas %}
+      <tr>
+        <td>{{ l.unidade }}</td>
+        <td class="num">{{ l.faturado | moeda_curta }}</td>
+        <td class="num rp-neg">{{ l.glosa | moeda_curta }}</td>
+        <td class="num">{{ l.glosa_sustentada | moeda_curta }}</td>
+        <td class="num rp-pos-txt">{{ l.glosa_recuperada | moeda_curta }}</td>
+        <td class="num">{{ l.itens_glosados | valor('int') }}</td>
+        {{ rp.share(l.taxa, 'coral') }}
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td>Total</td><td class="num">{{ bloco.total.faturado | moeda_curta }}</td><td class="num">{{ bloco.total.glosa | moeda_curta }}</td><td class="num">{{ bloco.total.glosa_sustentada | moeda_curta }}</td><td class="num">{{ bloco.total.glosa_recuperada | moeda_curta }}</td><td class="num">{{ bloco.total.itens_glosados | valor('int') }}</td><td class="num">{{ bloco.total.taxa | pct }}</td></tr></tfoot>
+  </table>
+</details>

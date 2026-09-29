@@ -1,0 +1,21 @@
+{% import "reports/_macros.html" as rp %}
+<div class="rp-duo">
+  <div class="rp-duo__graf">{{ rp.grafico(b.slug, bloco.grafico, 300) }}</div>
+  <div class="rp-duo__tab">
+    <table class="rp-tabela rp-tabela--compacta">
+      <thead><tr><th>Unidade</th><th class="num">Leitos</th><th class="num">Ocupados</th><th class="num">Livres</th><th class="num">Taxa</th><th class="num">Permanência</th></tr></thead>
+      <tbody>
+        {% for l in bloco.linhas %}
+        <tr>
+          <td><a href="/consultas/pacientes?unidade={{ l.unidade | urlencode }}&tipo=0">{{ l.unidade }}</a></td>
+          <td class="num">{{ l.leitos if l.leitos else '—' }}</td>
+          <td class="num">{{ l.ocupados }}</td>
+          <td class="num">{{ l.livres if l.livres is not none else '—' }}</td>
+          {% if l.taxa is not none %}{{ rp.share(l.taxa, 'coral' if l.taxa >= 90 else 'teal') }}{% else %}<td class="num rp-sub">sem leitos</td>{% endif %}
+          <td class="num">{{ (l.permanencia | round | int) ~ ' d' if l.permanencia else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

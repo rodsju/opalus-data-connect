@@ -1,0 +1,16 @@
+{% import "reports/_macros.html" as rp %}
+{{ rp.grafico(b.slug, bloco.grafico, bloco.altura) }}
+<table class="rp-tabela rp-tabela--compacta">
+  <thead><tr><th>Operadora</th><th class="num">Contas</th><th class="num">Em aberto</th><th class="num">Part.</th></tr></thead>
+  <tbody>
+    {% for l in bloco.linhas %}
+    <tr{% if l.outros %} class="rp-outros"{% endif %}>
+      <td>{{ l.operadora }}</td>
+      <td class="num">{{ l.contas_abertas | valor('int') }}</td>
+      <td class="num">{{ l.valor_aberto | moeda_curta }}</td>
+      {{ rp.share(l.pct, 'amber') }}
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot><tr><td>Total</td><td class="num">{{ bloco.total.contas_abertas | valor('int') }}</td><td class="num">{{ bloco.total.valor_aberto | moeda_curta }}</td><td></td></tr></tfoot>
+</table>

@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% import "reports/_macros.html" as rp %}
+{% block head %}<link rel="stylesheet" href="/static/css/reports.css">{% endblock %}
+{% set tom_nivel = {'alta': 'coral', 'media': 'amber', 'baixa': 'blue'} %}
+{% set tom_desvio = {'igual': 'teal', 'faturado sem orçar': 'coral', 'qtd acima': 'coral', 'preço diferente': 'amber', 'qtd abaixo': 'blue', 'orçado não faturado': 'neutral'} %}
+
+{% block conteudo %}
+{% set o = ctx.orcamento if ctx else none %}
+{% with titulo='Orçamento ' ~ id_orcamento, icone='clipboard-check', descricao=(o.unidade ~ ' · ' ~ o.operadora) if o else '', chips=([{'icone': 'user', 'texto': 'Paciente' if ctx.paciente_codigo else 'Paciente —', 'paciente': ctx.paciente_codigo}, {'icone': 'database', 'texto': 'ID paciente (Oracle) ' ~ (o.id_paciente or '—')}, {'icone': 'hash', 'texto': 'Código ' ~ (ctx.paciente_codigo or '—')}, {'icone': 'calendar', 'texto': (o.inicio | fmt) ~ ' a ' ~ (o.fim | fmt)}, {'icone': 'badge-check', 'texto': o.situacao}] if o else []) %}
+{% with abas=consultas, grupo="Consultas" %}{% include "reports/_cabecalho.html" %}{% endwith %}
+{% endwith %}
+
+<main class="rp-wrap">
+  <a class="rp-btn rp-btn--ghost" href="/consultas/orcamentos" style="align-self:flex-start"><i data-lucide="arrow-left"></i>Voltar à lista</a>
+  {% if aviso %}<div class="rp-alerta rp-alerta--info"><i data-lucide="circle-check"></i><div>{{ aviso }}</div></div>{% endif %}
+  {% if erro %}<div class="rp-alerta rp-alerta--erro"><i data-lucide="circle-x"></i><div><b>{{ erro.motivo }}</b>{% if erro.detalhe %} — {{ erro.detalhe }}{% endif %}</div></div>{% endif %}
+  {% if ctx %}
+  {{ rp.kpis([
+    {'rotulo': 'Orçado', 'valor': o.orcado, 'formato': 'moeda_curta', 'icone': 'wallet', 'tom': 'violet', 'hint': o.itens ~ ' itens'},
+    {'rotulo': 'Faturado', 'valor': o.faturado, 'formato': 'moeda_curta', 'icone': 'receipt', 'tom': 'cyan', 'hint': o.contas ~ ' conta(s), ' ~ o.contas_abertas ~ ' aberta(s)'},
+    {'rotulo': 'Diferença', 'valor': (o.faturado or 0) - (o.orcado or 0), 'formato': 'moeda_curta', 'icone': 'scale', 'tom': 'amber', 'hint': 'faturado − orçado'},
+    {'rotulo': 'Glosa (planilha)', 'valor': ctx.glosas | sum(attribute='glosa'), 'formato': 'moeda_curta', 'icone': 'shield-x', 'tom': 'coral', 'hint': (ctx.glosas | length) ~ ' linha(s) na planilha'},
+    {'rotulo': 'Senha', 'valor': (o.validade_senha | fmt) if o.validade_senha else 'sem validade', 'formato': 'texto', 'icone': 'key-round', 'tom': 'blue', 'hint': 'nº ' ~ (o.senha or '—')},
+  ]) }}
+
+  <div class="rp-grid">
+    <section class="rp-bloco rp-bloco--meia">
+      <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="triangle-alert"></i></span><h2>Riscos por regras</h2>{% if ctx.nivel %}{{ rp.badge('risco ' ~ ctx.nivel, tom_nivel[ctx.nivel]) }}{% endif %}</header>
+      <div class="rp-bloco__corpo">
+        {% for r in ctx.riscos %}<div class="rp-etapa rp-share--{{ tom_nivel[r.severidade] }}"><div class="rp-etapa__topo">{{ rp.badge(r.severidade, tom_nivel[r.severidade]) }}</div><div>{{ r.texto }}</div></div>
+        {% else %}<p class="rp-sub">Nenhuma regra disparou.</p>{% endfor %}
+      </div>
+    </section>
+
+    <section class="rp-bloco rp-bloco--meia">
+      <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="sparkles"></i></span><h2>Análise por IA</h2>{% if analise %}<span class="rp-bloco__tempo">{{ analise.criado_em | fmt }} · {{ analise.modelo }}</span>{% endif %}</header>
+      <div class="rp-bloco__corpo">
+        {% if analise %}
+        <p>{{ analise.resultado.resumo }}</p>
+        {% for r in analise.resultado.riscos %}
+        <div class="rp-etapa rp-share--{{ tom_nivel[r.severidade] }}">
+          <div class="rp-etapa__topo">{{ rp.badge(r.severidade ~ ' · ' ~ r.tema, tom_nivel[r.severidade]) }}{% if r.motivo_tiss %}<span class="mono rp-sub">TISS {{ r.motivo_tiss }}</span>{% endif %}</div>
+          {% if r.item %}<b>{{ r.item }}</b>{% endif %}
+          <div class="rp-sub">{{ r.evidencia }}</div>
+          <div>→ {{ r.recomendacao }}</div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="rp-sub">Ainda não analisado.</p>
+        {% endif %}
+        {% if provedor %}
+        <form method="post" action="/consultas/orcamentos/{{ id_orcamento }}/analisar" class="rp-form">
+          <button class="rp-btn" type="submit"><i data-lucide="sparkles"></i>{{ 'Reanalisar' if analise else 'Analisar com IA' }}</button>
+          {% if analise %}<label class="rp-sub"><input type="checkbox" name="forcar" value="1"> forçar nova chamada mesmo sem mudança</label>{% endif %}
+        </form>
+        <p class="rp-sub">Provedor: {{ provedor }}. Vão para a IA os itens do orçamento e da fatura, os desvios, os riscos por regras e o histórico de glosa da operadora — nunca o nome do paciente.</p>
+        {% else %}
+        <p class="rp-sub">Nenhum provedor de IA configurado (Setup › AI Providers).</p>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+
+  <section class="rp-bloco rp-bloco--inteira">
+    <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="git-compare-arrows"></i></span><h2>Orçado × faturado, item a item</h2>
+      <span class="rp-bloco__tempo">{% for t, n in ctx.resumo_desvios.items() if n %}{{ t }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</span></header>
+    <div class="rp-bloco__corpo rp-tabela-wrap">
+      <table class="rp-tabela rp-tabela--compacta">
+        <thead><tr><th>Desvio</th><th>Recurso</th><th class="num">Qtd orçada</th><th class="num">Qtd faturada</th><th class="num">Preço orç.</th><th class="num">Preço fat.</th><th class="num">Orçado</th><th class="num">Faturado</th><th class="num">Diferença</th></tr></thead>
+        <tbody>
+          {% for c in ctx.comparacao %}
+          <tr>
+            <td>{{ rp.badge(c.tipo, tom_desvio[c.tipo]) }}</td>
+            <td>{{ c.recurso }}<div class="rp-sub">{{ c.categoria }}</div></td>
+            <td class="num">{{ c.qtd_orcada | fmt }}</td><td class="num">{{ c.qtd_faturada | fmt }}</td>
+            <td class="num">{{ c.preco_orcado | moeda if c.preco_orcado is not none else '—' }}</td>
+            <td class="num">{{ c.preco_faturado | moeda if c.preco_faturado is not none else '—' }}</td>
+            <td class="num">{{ c.orcado | moeda }}</td><td class="num">{{ c.faturado | moeda }}</td>
+            <td class="num{% if c.dif_valor > 0.5 %} rp-neg{% endif %}">{{ c.dif_valor | moeda }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="rp-grid">
+    <section class="rp-bloco rp-bloco--meia">
+      <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="layers"></i></span><h2>Composição do orçamento</h2></header>
+      <div class="rp-bloco__corpo">
+        {% with cascata=ctx.cascata, id='orc-cascata' %}{% include "reports/_cascata.html" %}{% endwith %}
+        <table class="rp-tabela rp-tabela--compacta">
+          <thead><tr><th>Categoria</th><th class="num">Itens</th><th class="num">Orçado cobrável</th></tr></thead>
+          <tbody>{% for c in ctx.categorias %}<tr><td>{{ c.categoria }}</td><td class="num">{{ c.itens }}</td><td class="num">{{ c.cobrado | moeda }}</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </section>
+    <section class="rp-bloco rp-bloco--meia">
+      <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="receipt"></i></span><h2>Contas e glosa</h2></header>
+      <div class="rp-bloco__corpo">
+        <table class="rp-tabela rp-tabela--compacta">
+          <thead><tr><th>Conta</th><th>Situação</th><th>Protocolo</th><th class="num">Cobrado</th></tr></thead>
+          <tbody>{% for c in ctx.contas %}<tr><td class="mono">{{ c.id_conta }}<div class="rp-sub">{{ c.inicio | fmt }} a {{ c.fim | fmt }}</div></td><td>{{ c.situacao }}</td><td class="mono">{{ c.protocolo or '—' }}{% if c.data_entrega %}<div class="rp-sub">entregue {{ c.data_entrega | fmt }}</div>{% endif %}</td><td class="num">{{ c.cobrado | moeda }}</td></tr>
+          {% else %}<tr><td colspan="4" class="rp-sub">Ainda não faturado.</td></tr>{% endfor %}</tbody>
+        </table>
+        <h3 class="rp-subtitulo">Glosa na planilha</h3>
+        {% for g in ctx.glosas %}
+        <div class="rp-etapa rp-share--coral">
+          <div class="rp-etapa__topo"><span><span class="mono">{{ g.motivo or '—' }}</span> {{ (g.descricao or '') | capitalize }}</span><b>{{ g.glosa | moeda }}</b></div>
+          <div class="rp-sub">{{ g.status_glosa or '' }} · recorrido {{ g.valor_recursado | moeda }} · recuperado {{ g.recuperado | moeda }} · perda {{ g.perda | moeda }}</div>
+        </div>
+        {% else %}<p class="rp-sub">Sem glosa registrada na planilha para esta admissão no período.</p>{% endfor %}
+        <h3 class="rp-subtitulo">Histórico da operadora</h3>
+        <table class="rp-tabela rp-tabela--compacta">
+          <thead><tr><th>Motivo</th><th class="num">Linhas</th><th class="num">Glosa</th><th class="num">Recuperado</th></tr></thead>
+          <tbody>{% for h in ctx.historico_operadora %}<tr><td><span class="mono">{{ h.motivo or '—' }}</span><div class="rp-sub">{{ (h.descricao or '') | capitalize }}</div></td><td class="num">{{ h.linhas }}</td><td class="num">{{ h.glosa | moeda_curta }}</td><td class="num">{{ h.recuperado | moeda_curta }}</td></tr>
+          {% else %}<tr><td colspan="4" class="rp-sub">Sem histórico dessa operadora na planilha.</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+  {% endif %}
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/vendor/chart.umd.min.js"></script>
+<script src="/static/js/reports.js"></script>
+{% endblock %}

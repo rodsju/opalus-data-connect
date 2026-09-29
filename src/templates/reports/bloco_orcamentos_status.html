@@ -1,0 +1,30 @@
+{% import "reports/_macros.html" as rp %}
+{{ rp.kpis(bloco.cards) }}
+<div class="rp-duo rp-duo--rosca">
+  <div class="rp-duo__graf">{{ rp.grafico(b.slug, bloco.grafico, 260) }}</div>
+  <div class="rp-duo__tab">
+    <table class="rp-tabela">
+      <thead><tr><th>Situação</th><th class="num">Orçamentos</th><th class="num">Valor previsto</th><th class="num">Part.</th></tr></thead>
+      <tbody>
+        {% for r in bloco.resumo %}
+        <tr>
+          <td>{{ rp.badge(r.situacao, r.tom) }}</td>
+          <td class="num">{{ r.orcamentos | valor('int') }}</td>
+          <td class="num">{{ r.valor_previsto | moeda_curta }}</td>
+          {{ rp.share(r.pct, r.tom) }}
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td>Total</td><td class="num">{{ bloco.total.orcamentos | valor('int') }}</td><td class="num">{{ bloco.total.valor_previsto | moeda_curta }}</td><td></td></tr></tfoot>
+    </table>
+    {% if bloco.unidades | length > 1 %}
+    <details class="rp-numeros">
+      <summary>Por unidade</summary>
+      <table class="rp-tabela rp-tabela--compacta">
+        <thead><tr><th>Unidade</th><th class="num">Orçamentos</th><th class="num">Valor previsto</th></tr></thead>
+        <tbody>{% for u in bloco.unidades %}<tr><td>{{ u.unidade }}</td><td class="num">{{ u.orcamentos | valor('int') }}</td><td class="num">{{ u.valor_previsto | moeda_curta }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </details>
+    {% endif %}
+  </div>
+</div>

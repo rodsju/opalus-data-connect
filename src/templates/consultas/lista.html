@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% import "reports/_macros.html" as rp %}
+{% block head %}<link rel="stylesheet" href="/static/css/reports.css">{% endblock %}
+{% set tom_risco = {3: 'coral', 2: 'amber', 1: 'blue'} %}
+{% set nome_risco = {3: 'alta', 2: 'média', 1: 'baixa'} %}
+{% set tom_status = {'ANÁLISE OPALUS': 'amber', 'ANÁLISE OPERADORA': 'blue', 'ACATADO / ANÁLISE OPERADORA': 'violet', 'ACATADO': 'coral', 'PAGO': 'teal', 'GLOSA MANTIDA': 'magenta', 'Exportada (fechada)': 'success', 'Liberada (não exportada)': 'info', 'Aberta (não liberada)': 'warning', 'Baixada (write-off)': 'danger', 'Simulação': 'neutral'} %}
+
+{% macro url(pagina=none, ordem_=none, formato=none) -%}
+?{% for k, v in filtros.items() if v %}{{ k }}={{ v | urlencode }}&{% endfor %}{% if (ordem_ or ordem) %}ordem={{ ordem_ or ordem }}&{% endif %}{% if pagina %}pagina={{ pagina }}&{% endif %}{% if formato %}formato={{ formato }}{% endif %}
+{%- endmacro %}
+
+{% block conteudo %}
+{% with titulo=consulta.titulo, icone=consulta.icone, descricao=consulta.descricao, abas=consultas, grupo='Consultas', chips=[{'icone': 'rows-3', 'texto': (pag.total | valor('int')) ~ ' linhas'}] %}
+{% include "reports/_cabecalho.html" %}
+{% endwith %}
+
+<form class="rp-filtros rp-filtros--estatica" method="get" action="/consultas/{{ consulta.slug }}">
+  {% for f in consulta.filtros %}
+  <label class="rp-campo{% if f.tipo == 'select' %} rp-campo--largo{% endif %}"><span>{{ f.rotulo }}</span>
+    {% if f.tipo == 'mes' %}<input type="month" name="{{ f.nome }}" value="{{ filtros[f.nome] }}">
+    {% elif f.tipo == 'select' %}
+    <select name="{{ f.nome }}">{% if not f.sem_vazio %}<option value="">Todos</option>{% endif %}
+      {% for valor, rotulo in opcoes[f.nome] %}<option value="{{ valor }}"{% if valor|string == filtros[f.nome] %} selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select>
+    {% else %}<input type="search" name="{{ f.nome }}" value="{{ filtros[f.nome] }}">{% endif %}
+  </label>
+  {% endfor %}
+  <button class="rp-btn" type="submit"><i data-lucide="search"></i>Filtrar</button>
+  <a class="rp-btn rp-btn--ghost" href="/consultas/{{ consulta.slug }}">Limpar</a>
+  <a class="rp-btn rp-btn--ghost" href="{{ url(formato='csv') }}"><i data-lucide="download"></i>CSV</a>
+</form>
+
+<main class="rp-wrap{% if consulta.larga %} rp-wrap--larga{% endif %}">
+  {% if erro %}<div class="rp-alerta rp-alerta--erro"><i data-lucide="unplug"></i><div><b>{{ erro.motivo }}</b>{% if erro.detalhe %} — {{ erro.detalhe }}{% endif %}</div></div>{% endif %}
+  {% if resumo %}{{ rp.kpis(resumo) }}{% endif %}
+  <section class="rp-bloco rp-bloco--inteira">
+    <div class="rp-bloco__corpo rp-tabela-wrap">
+      <table class="rp-tabela rp-tabela--compacta">
+        <thead><tr>
+          {% for c in consulta.colunas if not c.so_csv %}
+          {% set atual, _, sentido = ordem.partition(':') %}
+          <th{% if c.num %} class="num"{% endif %}><a href="{{ url(ordem_=c.campo ~ (':asc' if atual == c.campo and sentido == 'desc' else ':desc')) }}">{{ c.rotulo }}{% if atual == c.campo %} {{ '▼' if sentido == 'desc' else '▲' }}{% endif %}</a></th>
+          {% endfor %}
+        </tr></thead>
+        <tbody>
+          {% for l in linhas %}
+          <tr>
+            {% for c in consulta.colunas if not c.so_csv %}
+            {% set v = l[c.campo] %}
+            <td class="{% if c.num %}num {% endif %}{% if c.formato == 'mono' %}mono {% endif %}{% if c.formato == 'texto_longo' %}rp-motivo{% endif %}">
+              {%- set com_link = c.link and v is not none and v != '' -%}
+              {%- if com_link %}<a href="{{ c.link.format(**l) }}">{% endif -%}
+              {%- if v is none or v == '' %}—
+              {%- elif c.formato == 'moeda' %}{{ v | moeda }}
+              {%- elif c.formato == 'data' %}{{ v | fmt }}
+              {%- elif c.formato == 'int' %}{{ v | valor('int') }}
+              {%- elif c.formato == 'codigo_paciente' %}{{ rp.codigo_paciente(v) }}
+              {%- elif c.formato == 'nome_paciente' %}{{ rp.nome_paciente(v) }}
+              {%- elif c.formato == 'comentario_oculto' %}{{ rp.comentario_oculto(v) }}
+              {%- elif c.formato == 'badge' %}{{ rp.badge(v, tom_status.get(v, 'neutral')) }}
+              {%- elif c.formato == 'risco' %}{% if v %}{{ rp.badge(nome_risco[v], tom_risco[v]) }}{% else %}—{% endif %}{% if l.analisado %}<div class="rp-sub">IA ✓</div>{% endif %}
+              {%- else %}{{ v }}{% endif -%}
+              {%- if com_link %}</a>{% endif -%}
+              {%- if c.sub and l[c.sub] is not none and l[c.sub] != '' %}<div class="rp-sub">{{ l[c.sub] | fmt }}</div>{% endif -%}
+            </td>
+            {% endfor %}
+          </tr>
+          {% else %}
+          <tr><td colspan="{{ consulta.colunas | rejectattr('so_csv') | list | length }}" class="rp-sub">Nenhuma linha neste filtro.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if pag.paginas > 1 %}
+    <nav class="rp-paginacao">
+      <span class="rp-sub">{{ pag.primeiro | valor('int') }}–{{ pag.ultimo | valor('int') }} de {{ pag.total | valor('int') }}</span>
+      {% if pag.pagina > 1 %}<a class="rp-btn rp-btn--ghost" href="{{ url(pagina=pag.pagina - 1) }}">‹</a>{% endif %}
+      {% for n in pag.numeros %}{% if n is none %}<span class="rp-sub">…</span>{% elif n == pag.pagina %}<span class="rp-btn">{{ n }}</span>{% else %}<a class="rp-btn rp-btn--ghost" href="{{ url(pagina=n) }}">{{ n }}</a>{% endif %}{% endfor %}
+      {% if pag.pagina < pag.paginas %}<a class="rp-btn rp-btn--ghost" href="{{ url(pagina=pag.pagina + 1) }}">›</a>{% endif %}
+    </nav>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

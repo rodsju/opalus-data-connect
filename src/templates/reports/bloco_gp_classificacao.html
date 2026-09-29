@@ -1,0 +1,13 @@
+{% import "reports/_macros.html" as rp %}
+{% if bloco.internas_pct is not none %}
+<div class="rp-destaques rp-destaques--magenta"><span><b>{{ bloco.internas_pct | pct }}</b> da glosa vem de erro interno (cadastro, sistema, faturamento, comercial)</span></div>
+{% endif %}
+{{ rp.grafico(b.slug, bloco.grafico, 220) }}
+<table class="rp-tabela rp-tabela--compacta">
+  <thead><tr><th>Origem</th><th class="num">Linhas</th><th class="num">Glosa</th><th class="num">Part.</th></tr></thead>
+  <tbody>
+    {% for l in bloco.linhas %}
+    <tr><td><i class="rp-dot rp-dot--{{ l.tom }}"></i>{{ l.classificacao }}{% if l.interna %} <span class="rp-sub">interna</span>{% endif %}</td><td class="num">{{ l.linhas | valor('int') }}</td><td class="num">{{ l.glosa | moeda_curta }}</td>{{ rp.share(l.pct, l.tom) }}</tr>
+    {% endfor %}
+  </tbody>
+</table>

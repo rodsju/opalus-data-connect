@@ -1,0 +1,4 @@
+{% with cascata=bloco, id=b.slug %}{% include "reports/_cascata.html" %}{% endwith %}
+{% if bloco.sem_erp %}
+<p class="rp-sub">{{ bloco.sem_erp }} de {{ bloco.linhas }} linhas da planilha ({{ bloco.faturado_sem_erp | moeda_curta }} faturados segundo a planilha) não casaram com o ERP e ficam fora desta cascata — ver Conciliação › Planilha × ERP.</p>
+{% endif %}

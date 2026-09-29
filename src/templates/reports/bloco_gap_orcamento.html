@@ -1,0 +1,23 @@
+{% import "reports/_macros.html" as rp %}
+<div class="rp-destaques rp-destaques--magenta">
+  <span><b>{{ bloco.total.autorizados_sem_faturamento | valor('int') }}</b> orçamentos autorizados e não faturados</span>
+  {% if bloco.sem_valor %}
+  <span>Sem itens com valor — o gráfico mostra a quantidade</span>
+  {% else %}
+  <span><b>{{ bloco.total.valor_autorizado_pendente | moeda_curta }}</b> em valor autorizado</span>
+  {% endif %}
+</div>
+<div class="rp-duo">
+  <div class="rp-duo__graf">{{ rp.grafico(b.slug, bloco.grafico, bloco.altura) }}</div>
+  <div class="rp-duo__tab">
+    <table class="rp-tabela">
+      <thead><tr><th>Unidade de negócio</th><th class="num">Orçamentos</th><th class="num">Valor autorizado</th><th class="num">Part.</th></tr></thead>
+      <tbody>
+        {% for l in bloco.linhas %}
+        <tr><td>{{ l.unidade }}</td><td class="num">{{ l.autorizados_sem_faturamento | valor('int') }}</td><td class="num">{{ l.valor_autorizado_pendente | moeda_curta }}</td>{{ rp.share(l.pct, 'magenta') }}</tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td>Total</td><td class="num">{{ bloco.total.autorizados_sem_faturamento | valor('int') }}</td><td class="num">{{ bloco.total.valor_autorizado_pendente | moeda_curta }}</td><td></td></tr></tfoot>
+    </table>
+  </div>
+</div>

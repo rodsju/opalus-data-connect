@@ -1,0 +1,11 @@
+{% import "reports/_macros.html" as rp %}
+{{ rp.grafico(b.slug, bloco.grafico, 220) }}
+<div class="rp-etapas">
+  {% for e in bloco.etapas %}
+  <div class="rp-etapa rp-share--{{ e.tom }}">
+    <div class="rp-etapa__topo">{{ rp.badge(e.status, e.tom) }}<b>{{ e.glosa | moeda_curta }}</b></div>
+    <div class="rp-etapa__barra"><span style="width: {{ [e.pct or 0, 100] | min | round(1) }}%"></span></div>
+    <div class="rp-sub">{{ e.linhas | valor('int') }} linhas · {{ e.pct | pct }} · {{ e.descricao }}</div>
+  </div>
+  {% endfor %}
+</div>

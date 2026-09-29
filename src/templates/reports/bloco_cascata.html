@@ -1,0 +1,5 @@
+{% with cascata=bloco, id=b.slug %}{% include "reports/_cascata.html" %}{% endwith %}
+<div class="rp-destaques">
+  <span>Tributos da conta (ERP): <b>{{ bloco.tributos | moeda_curta }}</b> · {{ bloco.tributos_pct | pct }} do faturamento — informativo</span>
+  {% if not bloco.fecha %}<span class="rp-neg">A cascata não fechou: conferir as regras</span>{% endif %}
+</div>

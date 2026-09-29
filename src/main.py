@@ -1,8 +1,9 @@
 
 import os
+from urllib.parse import quote
 
-from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import layout
@@ -19,6 +20,14 @@ from . import home as home_view
 from . import ia as ia_view
 from . import oracle as oracle_view
 from . import provedores as provedores_mod
+from .conciliacao import paginas as conciliacao_view
+from .conciliacao import privacidade as privacidade_mod
+from .reports import galeria as reports_galeria
+from .consultas import conta_paciente_detalhe
+from .consultas import lista as consultas_lista
+from .consultas import orcamentos as orcamentos_view
+from .consultas import registro as consultas_registro
+from .reports import relatorios as reports_mod
 from . import setup as setup_view
 from . import setup_lote as setup_lote_view
 from . import usuario as usuario_mod
@@ -76,6 +85,279 @@ def logout(request: Request):
         # Sem HttpOnly nao daria para limpar cookie de sessao pelo JS
         resposta.delete_cookie(nome, path="/")
     return resposta
+
+
+# --------------------------------------------------------------------------
+# Reports: relatorios em blocos, consultados ao vivo (src/reports/)
+# --------------------------------------------------------------------------
+
+
+@app.get("/reports/blocos")
+def reports_blocos(request: Request):
+    """Galeria com amostras. ANTES de /reports/{slug}, senao o path param captura."""
+    html, status = reports_galeria.gerar_pagina(usuario_mod.identificar(request))
+    return HTMLResponse(content=html, status_code=status)
+
+
+@app.get("/reports/orcamentos-detalhe")
+def reports_orcamentos_antigo(request: Request):
+    """Orçamentos detalhados virou ferramenta (Consultas › Orçamentos)."""
+    destino = "/consultas/orcamentos" + (f"?{request.url.query}" if request.url.query else "")
+    return RedirectResponse(destino, status_code=301)
+
+
+@app.get("/reports/orcamentos-detalhe/{id_orcamento}")
+def reports_orcamento_antigo(id_orcamento: int):
+    return RedirectResponse(f"/consultas/orcamentos/{id_orcamento}", status_code=301)
+
+
+@app.get("/reports/glosa")
+def reports_glosa_antigo(request: Request):
+    """O relatório de glosa virou Glosa IW; o endereço antigo continua valendo."""
+    destino = "/reports/glosa-iw" + (f"?{request.url.query}" if request.url.query else "")
+    return RedirectResponse(destino, status_code=301)
+
+
+@app.get("/reports/{slug}")
+def reports_relatorio(
+    request: Request, slug: str, mes: str = Query(default=""), unidade: str = Query(default=""),
+    convenio: str = Query(default=""), motivo: str = Query(default=""), tipo: str = Query(default=""),
+):
+    html, status = reports_mod.gerar_pagina(
+        usuario_mod.identificar(request), slug, mes, unidade, convenio, motivo, tipo)
+    if html is None:
+        raise HTTPException(status_code=404, detail="Relatório não encontrado")
+    return HTMLResponse(content=html, status_code=status)
+
+
+# --------------------------------------------------------------------------
+# Consultas: ferramentas linha a linha (src/consultas/)
+# --------------------------------------------------------------------------
+
+
+@app.get("/pacientes/nome")
+def paciente_nome(request: Request, codigo: str = Query(default="")):
+    """Nome do paciente sob demanda (o '*****' da tela). Confere permissão e registra quem viu."""
+    sem_cache = {"Cache-Control": "no-store"}
+    try:
+        nome = privacidade_mod.nome_paciente(codigo, usuario_mod.identificar(request))
+    except ValueError as erro:
+        return JSONResponse({"erro": str(erro)}, status_code=400, headers=sem_cache)
+    except PermissionError as erro:
+        return JSONResponse({"erro": str(erro)}, status_code=403, headers=sem_cache)
+    except Exception:
+        return JSONResponse({"erro": "Não foi possível consultar o nome agora."}, status_code=502, headers=sem_cache)
+    if not nome:
+        return JSONResponse({"erro": "Paciente não encontrado."}, status_code=404, headers=sem_cache)
+    return JSONResponse({"nome": nome}, headers=sem_cache)
+
+
+@app.get("/consultas/contas")
+def consultas_contas_antigo(request: Request):
+    """A lista por conta virou Consultas › Faturas."""
+    consulta = str(request.query_params)
+    return RedirectResponse("/consultas/faturas" + (f"?{consulta}" if consulta else ""), status_code=301)
+
+
+@app.get("/consultas/conta-paciente/{id_conta}/{id_admissao}/{id_orcamento}")
+def consultas_conta_paciente_detalhe(request: Request, id_conta: int, id_admissao: int, id_orcamento: int):
+    html, status = conta_paciente_detalhe.gerar(usuario_mod.identificar(request), id_conta, id_admissao, id_orcamento)
+    if html is None:
+        raise HTTPException(status_code=404, detail="linha não encontrada")
+    return HTMLResponse(html, status_code=status)
+
+
+@app.get("/consultas/pre-auditoria/comentario")
+def pre_auditoria_comentario(request: Request, item: str = Query(default="")):
+    """Comentário do auditor sob demanda: texto livre que pode citar o paciente."""
+    sem_cache = {"Cache-Control": "no-store"}
+    try:
+        texto = privacidade_mod.comentario_pre_auditoria(item, usuario_mod.identificar(request))
+    except ValueError as erro:
+        return JSONResponse({"erro": str(erro)}, status_code=400, headers=sem_cache)
+    except PermissionError as erro:
+        return JSONResponse({"erro": str(erro)}, status_code=403, headers=sem_cache)
+    except Exception:
+        return JSONResponse({"erro": "Não foi possível consultar o comentário agora."}, status_code=502,
+                            headers=sem_cache)
+    if not texto:
+        return JSONResponse({"erro": "Sem comentário."}, status_code=404, headers=sem_cache)
+    return JSONResponse({"texto": texto}, headers=sem_cache)
+
+
+@app.get("/consultas")
+def consultas_inicio():
+    return RedirectResponse("/consultas/glosas", status_code=302)
+
+
+@app.get("/consultas/orcamentos/{id_orcamento}")
+def consultas_orcamento(request: Request, id_orcamento: int, ok: str = Query(default="")):
+    html, status = orcamentos_view.gerar_detalhe(usuario_mod.identificar(request), id_orcamento, aviso=ok or None)
+    if html is None:
+        raise HTTPException(status_code=404, detail="Orçamento não encontrado")
+    return HTMLResponse(content=html, status_code=status)
+
+
+@app.post("/consultas/orcamentos/{id_orcamento}/analisar")
+def consultas_orcamento_analisar(request: Request, id_orcamento: int, forcar: str = Form(default="")):
+    usuario = usuario_mod.identificar(request)
+    aviso, erro = orcamentos_view.analisar(id_orcamento, (usuario or {}).get("email"), forcar=bool(forcar))
+    if erro:
+        html, status = orcamentos_view.gerar_detalhe(usuario, id_orcamento, erro=erro)
+        return HTMLResponse(content=html, status_code=status)
+    return RedirectResponse(f"/consultas/orcamentos/{id_orcamento}?ok={quote(aviso)}", status_code=303)
+
+
+@app.get("/consultas/{slug}")
+def consultas_lista_rota(request: Request, slug: str, formato: str = Query(default="")):
+    definicao = consultas_registro.CONSULTAS.get(slug)
+    if not definicao:
+        raise HTTPException(status_code=404, detail="Consulta não encontrada")
+    conteudo, status, tipo = consultas_lista.gerar(
+        definicao, usuario_mod.identificar(request), dict(request.query_params), formato)
+    if tipo == "text/csv":
+        return Response(content=conteudo, media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{slug}.csv"'})
+    return HTMLResponse(content=conteudo, status_code=status)
+
+
+# --------------------------------------------------------------------------
+# Conciliação: planilha de glosa por CSV × ERP (src/conciliacao/)
+# --------------------------------------------------------------------------
+
+
+def _pagina(resultado):
+    html, status = resultado
+    return HTMLResponse(content=html, status_code=status)
+
+
+@app.get("/conciliacao")
+def conciliacao_inicio():
+    return RedirectResponse("/conciliacao/tiss", status_code=302)
+
+
+@app.get("/conciliacao/tiss")
+def conciliacao_tiss(request: Request, id: int | None = Query(default=None), ok: str = Query(default="")):
+    return _pagina(conciliacao_view.pagina_tiss(usuario_mod.identificar(request), id, aviso=ok or None))
+
+
+@app.post("/conciliacao/tiss")
+async def conciliacao_tiss_upload(request: Request, arquivos: list[UploadFile] = File(...)):
+    usuario = usuario_mod.identificar(request)
+    recebidos = [(a.filename or "retorno.xml", await a.read()) for a in arquivos]
+    arquivo_id, aviso, erro = conciliacao_view.receber_tiss(recebidos, (usuario or {}).get("email"))
+    if erro and not aviso:
+        return _pagina(conciliacao_view.pagina_tiss(usuario, erro=erro))
+    if erro:
+        return _pagina(conciliacao_view.pagina_tiss(usuario, arquivo_id, aviso=aviso, erro=erro))
+    return RedirectResponse(f"/conciliacao/tiss?id={arquivo_id}&ok={quote(aviso)}", status_code=303)
+
+
+@app.get("/conciliacao/tiss/{arquivo_id}/divergencias.md")
+def conciliacao_tiss_divergencias(arquivo_id: int):
+    texto = conciliacao_view.divergencias_md(arquivo_id)
+    if texto is None:
+        raise HTTPException(status_code=404, detail="retorno não encontrado")
+    return Response(texto, media_type="text/markdown; charset=utf-8", headers={
+        "Content-Disposition": f'attachment; filename="divergencias_{arquivo_id}.md"', "Cache-Control": "no-store"})
+
+
+@app.post("/conciliacao/tiss/{arquivo_id}/excluir")
+def conciliacao_tiss_excluir(arquivo_id: int):
+    conciliacao_view.excluir_tiss(arquivo_id)
+    return RedirectResponse(f"/conciliacao/tiss?ok={quote(f'Retorno #{arquivo_id} excluído.')}", status_code=303)
+
+
+@app.get("/conciliacao/cargas")
+def conciliacao_cargas(request: Request, id: int | None = Query(default=None), ok: str = Query(default="")):
+    return _pagina(conciliacao_view.pagina_cargas(usuario_mod.identificar(request), id, aviso=ok or None))
+
+
+@app.post("/conciliacao/cargas")
+async def conciliacao_upload(
+    request: Request, arquivo: UploadFile = File(...), data_referencia: str = Form(default=""),
+):
+    usuario = usuario_mod.identificar(request)
+    conteudo = await arquivo.read()
+    carga_id, aviso, erro = conciliacao_view.receber_upload(
+        conteudo, arquivo.filename or "planilha.csv", data_referencia, (usuario or {}).get("email"),
+    )
+    if erro:
+        # Sem redirect: o erro precisa aparecer junto do formulário, e não há o que repetir num F5.
+        return _pagina(conciliacao_view.pagina_cargas(usuario, erro=erro))
+    return RedirectResponse(f"/conciliacao/cargas?id={carga_id}&ok={quote(aviso)}", status_code=303)
+
+
+@app.post("/conciliacao/cargas/{carga_id}/ativar")
+def conciliacao_ativar(carga_id: int):
+    conciliacao_view.cargas.ativar(carga_id)
+    return RedirectResponse(
+        f"/conciliacao/cargas?id={carga_id}&ok={quote(f'Carga #{carga_id} voltou a ser a ativa.')}", status_code=303
+    )
+
+
+@app.get("/conciliacao/glosa-erp")
+def conciliacao_glosa_erp(request: Request, ok: str = Query(default="")):
+    return _pagina(conciliacao_view.pagina_glosa_erp(usuario_mod.identificar(request), aviso=ok or None))
+
+
+@app.post("/conciliacao/reconciliar")
+def conciliacao_reconciliar(request: Request):
+    aviso, erro = conciliacao_view.reconciliar()
+    if erro:
+        return _pagina(conciliacao_view.pagina_glosa_erp(
+            usuario_mod.identificar(request), aviso=f"Cruzamento não rodou: {erro['motivo']} {erro['detalhe'] or ''}"))
+    return RedirectResponse(f"/conciliacao/glosa-erp?ok={quote(aviso)}", status_code=303)
+
+
+@app.get("/conciliacao/premissas")
+def conciliacao_premissas(request: Request, tipo: str = Query(default=""), ok: str = Query(default=""),
+                          editar: int | None = Query(default=None)):
+    return _pagina(conciliacao_view.pagina_premissas(usuario_mod.identificar(request), tipo, aviso=ok or None,
+                                                     editar=editar))
+
+
+@app.post("/conciliacao/premissas/{tipo}/linhas")
+@app.post("/conciliacao/premissas/{tipo}/linhas/{id_linha}")
+async def conciliacao_premissa_salvar(request: Request, tipo: str, id_linha: int | None = None):
+    """Inclui (sem id) ou altera uma linha de premissa pelo formulário da página."""
+    usuario = usuario_mod.identificar(request)
+    campos = dict(await request.form())
+    aviso, erro = conciliacao_view.salvar_linha(tipo, campos, id_linha, (usuario or {}).get("email"))
+    if erro:
+        return _pagina(conciliacao_view.pagina_premissas(usuario, tipo, erro=erro, editar=id_linha, rascunho=campos))
+    return RedirectResponse(f"/conciliacao/premissas?tipo={tipo}&ok={quote(aviso)}", status_code=303)
+
+
+@app.post("/conciliacao/premissas/{tipo}/linhas/{id_linha}/excluir")
+def conciliacao_premissa_excluir(request: Request, tipo: str, id_linha: int):
+    usuario = usuario_mod.identificar(request)
+    aviso, erro = conciliacao_view.excluir_linha(tipo, id_linha, (usuario or {}).get("email"))
+    if erro:
+        return _pagina(conciliacao_view.pagina_premissas(usuario, tipo, erro=erro))
+    return RedirectResponse(f"/conciliacao/premissas?tipo={tipo}&ok={quote(aviso)}", status_code=303)
+
+
+@app.post("/conciliacao/premissas/motivo_tiss/sincronizar")
+def conciliacao_sincronizar_tiss(request: Request):
+    usuario = usuario_mod.identificar(request)
+    aviso, erro = conciliacao_view.sincronizar_tiss((usuario or {}).get("email"))
+    if erro:
+        return _pagina(conciliacao_view.pagina_premissas(usuario, "motivo_tiss", erro=erro))
+    return RedirectResponse(f"/conciliacao/premissas?tipo=motivo_tiss&ok={quote(aviso)}", status_code=303)
+
+
+@app.post("/conciliacao/premissas/{tipo}")
+async def conciliacao_premissa_upload(request: Request, tipo: str, arquivo: UploadFile = File(...)):
+    aviso, erro = conciliacao_view.receber_premissa(tipo, await arquivo.read())
+    if erro:
+        return _pagina(conciliacao_view.pagina_premissas(usuario_mod.identificar(request), tipo, erro=erro))
+    return RedirectResponse(f"/conciliacao/premissas?tipo={tipo}&ok={quote(aviso)}", status_code=303)
+
+
+@app.get("/conciliacao/regras")
+def conciliacao_regras(request: Request):
+    return _pagina(conciliacao_view.pagina_regras(usuario_mod.identificar(request)))
 
 
 @app.get("/oracle")

@@ -1,0 +1,26 @@
+{% import "reports/_macros.html" as rp %}
+<div class="rp-destaques">
+  <a class="rp-btn rp-btn--ghost" href="/consultas/faturas{% if filtros is defined and filtros and filtros.mes %}?mes={{ filtros.mes }}{% endif %}"><i data-lucide="search"></i>ver as faturas</a>
+  <span><b>{{ bloco.n_operadoras }}</b> entidades pagadoras no mês</span>
+  {% if bloco.top3_pct is not none %}<span>As 3 maiores concentram <b>{{ bloco.top3_pct | pct }}</b></span>{% endif %}
+</div>
+<div class="rp-duo">
+  <div class="rp-duo__graf">{{ rp.grafico(b.slug, bloco.grafico, bloco.altura) }}</div>
+  <div class="rp-duo__tab">
+    <table class="rp-tabela">
+      <thead><tr><th>#</th><th>Entidade pagadora</th><th class="num">Contas</th><th class="num">Faturamento</th><th class="num">Part.</th></tr></thead>
+      <tbody>
+        {% for l in bloco.linhas %}
+        <tr{% if l.outros %} class="rp-outros"{% endif %}>
+          <td class="rp-pos">{{ '' if l.outros else loop.index }}</td>
+          <td>{{ l.operadora }}{% if l.particular %} {{ rp.badge("particular", "violet") }}{% endif %}</td>
+          <td class="num">{{ l.contas | valor('int') }}</td>
+          <td class="num">{{ l.valor_faturado | moeda_curta }}</td>
+          {{ rp.share(l.pct, 'blue') }}
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td></td><td>Total</td><td class="num">{{ bloco.total.contas | valor('int') }}</td><td class="num">{{ bloco.total.valor_faturado | moeda_curta }}</td><td></td></tr></tfoot>
+    </table>
+  </div>
+</div>

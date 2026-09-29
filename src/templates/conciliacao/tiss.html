@@ -1,0 +1,85 @@
+{% extends "conciliacao/_base.html" %}
+{% set icone_pagina = 'file-code-2' %}
+{% set descricao_pagina = 'Envie o XML TISS de volta da operadora (demonstrativo de análise de conta). Ele é a fonte da glosa — valor, motivo e item — e sobrepõe a planilha no que divergir; recurso, recuperado e perda continuam vindo da planilha.' %}
+{% set chips_pagina = [{'icone': 'files', 'texto': (lista | length) ~ ' retorno(s)'}] %}
+{% set tom_situacao = {'CONCILIADO': 'success', 'DIVERGENTE': 'warning', 'GUIA NÃO ACHADA': 'danger', 'PROTOCOLO NÃO ACHADO': 'danger'} %}
+
+{% block pagina %}
+<section class="rp-bloco rp-bloco--inteira">
+  <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="upload-cloud"></i></span><h2>Novo retorno</h2></header>
+  <div class="rp-bloco__corpo">
+    <form class="rp-form" method="post" action="/conciliacao/tiss" enctype="multipart/form-data">
+      <label class="rp-campo rp-campo--largo"><span>XML de volta (um ou vários) ou .zip</span><input type="file" name="arquivos" accept=".xml,.zip,text/xml,application/zip" multiple required></label>
+      <button class="rp-btn" type="submit"><i data-lucide="upload"></i>Carregar e conciliar</button>
+    </form>
+    <p class="rp-sub">TISS 4.01 ou 4.02, transação DEMONSTRATIVO_ANALISE_CONTA. Cada operadora manda um arquivo por bloco de faturas (protocolo). O casamento com o ERP é pelo protocolo de entrega da conta e pela guia do prestador (= conta + admissão). O XML de envio não é importado. Reenviar o mesmo arquivo não duplica; um demonstrativo mais novo do mesmo protocolo substitui o anterior. A carteira do beneficiário fica só como hash.</p>
+  </div>
+</section>
+
+{% if arquivo %}
+{% set r = arquivo.resumo %}
+<section class="rp-bloco rp-bloco--inteira">
+  <header class="rp-bloco__head">
+    <span class="rp-bloco__icone"><i data-lucide="file-check-2"></i></span>
+    <h2>Demonstrativo {{ arquivo.numero_demonstrativo }} · {{ arquivo.operadora_nome }}</h2>
+    <a class="rp-btn rp-btn--ghost rp-btn--mini" href="/conciliacao/tiss/{{ arquivo.id }}/divergencias.md"><i data-lucide="file-down"></i>Divergências (.md)</a>
+    <form method="post" action="/conciliacao/tiss/{{ arquivo.id }}/excluir" onsubmit="return confirm('Excluir este retorno? A glosa volta a vir da planilha para essas admissões.')"><button class="rp-btn rp-btn--ghost rp-btn--mini" type="submit" title="Excluir"><i data-lucide="trash-2"></i></button></form>
+  </header>
+  <div class="rp-bloco__corpo">
+    {{ rp.kpis([
+      {'rotulo': 'Guias', 'valor': r.guias, 'formato': 'int', 'icone': 'files', 'tom': 'blue', 'hint': (r.por_situacao.get('CONCILIADO', 0)) ~ ' conciliada(s) com o ERP'},
+      {'rotulo': 'Informado', 'valor': arquivo.informado, 'formato': 'moeda_curta', 'icone': 'receipt', 'tom': 'cyan', 'hint': 'enviado à operadora'},
+      {'rotulo': 'Liberado', 'valor': arquivo.liberado, 'formato': 'moeda_curta', 'icone': 'badge-check', 'tom': 'teal', 'hint': 'aceito pela operadora'},
+      {'rotulo': 'Glosa (xml)', 'valor': arquivo.glosa, 'formato': 'moeda_curta', 'icone': 'shield-x', 'tom': 'coral', 'hint': r.guias_com_glosa ~ ' guia(s) · ' ~ r.itens_casados ~ ' item(ns) casado(s) com o ERP'},
+    ]) }}
+    <dl class="rp-kv">
+      <dt>Arquivo</dt><dd class="mono">{{ arquivo.arquivo }}</dd>
+      <dt>Operadora</dt><dd>{{ arquivo.operadora_nome }} <span class="rp-sub">ANS {{ arquivo.operadora_ans }}</span></dd>
+      <dt>Protocolos</dt><dd class="mono">{{ r.protocolos | join(', ') }}</dd>
+      <dt>Emitido / carregado</dt><dd>{{ arquivo.data_emissao | fmt }} · {{ arquivo.recebido_em | fmt }}{% if arquivo.autor %} por {{ arquivo.autor }}{% endif %}</dd>
+      <dt>Padrão TISS</dt><dd>{{ arquivo.padrao }}</dd>
+    </dl>
+    <div class="rp-tabela-wrap" style="max-height: 560px">
+      <table class="rp-tabela rp-tabela--compacta">
+        <thead><tr><th>Guia</th><th>Conta / admissão</th><th>Paciente</th><th>ERP</th><th class="num">Faturado ERP</th><th class="num">Informado</th><th class="num">Liberado</th><th class="num">Glosa (xml)</th><th>Motivo (xml)</th><th></th></tr></thead>
+        <tbody>
+          {% for g in guias %}
+          <tr>
+            <td class="mono">{{ g.guia_prestador }}<div class="rp-sub">protocolo {{ g.protocolo }}</div></td>
+            <td class="mono">{{ g.id_conta or '—' }} / {{ g.id_admissao or '—' }}</td>
+            <td>{% if g.id_paciente %}{{ rp.codigo_paciente('P' ~ g.id_paciente) }}{% else %}—{% endif %}</td>
+            <td>{{ rp.badge(g.situacao, tom_situacao.get(g.situacao, 'neutral')) }}<div class="rp-sub">{{ g.regra or '' }}</div></td>
+            <td class="num">{{ g.faturado_erp | moeda if g.faturado_erp is not none else '—' }}</td>
+            <td class="num">{{ g.informado | moeda }}</td><td class="num">{{ g.liberado | moeda }}</td>
+            <td class="num{% if g.glosa %} rp-neg{% endif %}">{{ g.glosa | moeda }}</td>
+            <td class="mono">{{ g.motivo_principal or '—' }}</td>
+            <td>{% if g.id_conta and g.id_admissao %}<a class="rp-sub" href="/consultas/conta-paciente/{{ g.id_conta }}/{{ g.id_admissao }}/{{ g.id_orcamento or 0 }}">detalhe →</a>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="rp-bloco rp-bloco--inteira">
+  <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="history"></i></span><h2>Retornos carregados</h2></header>
+  <div class="rp-bloco__corpo rp-tabela-wrap">
+    <table class="rp-tabela rp-tabela--compacta">
+      <thead><tr><th>#</th><th>Operadora</th><th>Demonstrativo</th><th>Protocolos</th><th>Emitido</th><th class="num">Guias</th><th class="num">Informado</th><th class="num">Glosa (xml)</th><th>Casamento</th><th>Carregado</th></tr></thead>
+      <tbody>
+        {% for a in lista %}
+        <tr{% if arquivo and a.id == arquivo.id %} class="rp-linha--editando"{% endif %}>
+          <td><a href="?id={{ a.id }}">{{ a.id }}</a></td><td>{{ a.operadora_nome }}</td><td class="mono">{{ a.numero_demonstrativo }}</td>
+          <td class="mono">{{ a.resumo.protocolos | join(', ') }}</td><td>{{ a.data_emissao | fmt }}</td>
+          <td class="num">{{ a.resumo.guias }}</td><td class="num">{{ a.informado | moeda_curta }}</td><td class="num">{{ a.glosa | moeda_curta }}</td>
+          <td>{% for s, n in a.resumo.por_situacao.items() %}{{ rp.badge(s ~ ' ' ~ n, tom_situacao.get(s, 'neutral')) }} {% endfor %}</td>
+          <td>{{ a.recebido_em | fmt }}</td>
+        </tr>
+        {% else %}<tr><td colspan="10" class="rp-sub">Nenhum retorno carregado ainda.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

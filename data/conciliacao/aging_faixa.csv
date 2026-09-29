@@ -1,0 +1,7 @@
+dia;grupo
+1;Até 30 dias
+31;De 31 a 60 dias
+61;De 61 a 90 dias
+91;De 91 a 180 dias
+181;De 181 a 360 dias
+361;Acima de 360 dias

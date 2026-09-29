@@ -1,0 +1,35 @@
+{% import "reports/_macros.html" as rp %}
+{{ rp.kpis(bloco.kpis) }}
+<div class="rp-duo rp-duo--meio">
+  <div>
+    <h3 class="rp-subtitulo">Por motivo</h3>
+    {% if bloco.grafico_motivos %}{{ rp.grafico(b.slug ~ '-motivos', bloco.grafico_motivos, 260) }}{% else %}<p class="rp-sub">Nenhum item pré-auditado no mês.</p>{% endif %}
+  </div>
+  <div>
+    <h3 class="rp-subtitulo">Por operadora</h3>
+    {% if bloco.grafico_operadoras %}{{ rp.grafico(b.slug ~ '-operadoras', bloco.grafico_operadoras, 260) }}{% else %}<p class="rp-sub">—</p>{% endif %}
+  </div>
+</div>
+{% if bloco.motivos %}
+<div class="rp-tabela-wrap" style="max-height: 360px">
+  <table class="rp-tabela rp-tabela--compacta">
+    <thead><tr><th>Motivo</th><th>Origem</th><th class="num">Itens</th><th class="num">Contas</th><th class="num">Pré-auditoria</th><th class="num">Part.</th><th class="num">Glosados depois</th></tr></thead>
+    <tbody>
+      {% for l in bloco.motivos %}
+      <tr>
+        <td><span class="mono">{{ l.grupo }}</span> <a class="rp-sub" href="{{ bloco.link }}&motivo={{ l.grupo | urlencode }}" title="ver os casos">casos →</a>
+          {% if l.descricao %}<div class="rp-sub">{{ l.descricao | capitalize }}</div>{% endif %}</td>
+        <td>{% if l.origem %}{{ rp.badge('interno' if l.origem == 'interno' else 'TISS', 'violet' if l.origem == 'interno' else 'neutral') }}{% endif %}</td>
+        <td class="num">{{ l.itens | valor('int') }}</td>
+        <td class="num">{{ l.contas | valor('int') }}</td>
+        <td class="num">{{ l.pre_auditoria | moeda }}</td>
+        {{ rp.share(l.pct, 'violet') }}
+        <td class="num">{{ l.itens_glosados_depois | valor('int') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% if bloco.grafico_meses %}<h3 class="rp-subtitulo">Últimos 12 meses</h3>{{ rp.grafico(b.slug ~ '-meses', bloco.grafico_meses, 220) }}{% endif %}
+<p class="rp-sub"><a href="{{ bloco.link }}">Ver os itens pré-auditados em Consultas →</a></p>

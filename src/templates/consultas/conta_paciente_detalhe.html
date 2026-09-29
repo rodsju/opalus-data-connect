@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% import "reports/_macros.html" as rp %}
+{% block head %}<link rel="stylesheet" href="/static/css/reports.css">{% endblock %}
+{% set tom_desvio = {'igual': 'teal', 'faturado sem orçar': 'coral', 'qtd acima': 'coral', 'preço diferente': 'amber', 'qtd abaixo': 'blue', 'orçado não faturado': 'neutral'} %}
+
+{% block conteudo %}
+{% set l = ctx.linha if ctx else none %}
+{% set o = ctx.orcamento if ctx else none %}
+{% with titulo=titulo_pagina, icone='file-stack',
+        descricao=(l.operadora ~ ' · ' ~ l.unidade ~ ' · ' ~ (l.tipo_nome or '')) if l else '',
+        chips=([
+          {'icone': 'user', 'texto': 'Paciente', 'paciente': l.paciente_codigo},
+          {'icone': 'database', 'texto': 'ID paciente (Oracle) ' ~ (l.id_paciente or '—')},
+          {'icone': 'hash', 'texto': 'Código ' ~ (l.paciente_codigo or '—')},
+          {'icone': 'file-text', 'texto': 'NF ' ~ (l.nota_fiscal or '—') ~ ((' (' ~ l.nf_origem ~ ')') if l.nf_origem else '')},
+          {'icone': 'send', 'texto': 'Protocolo ' ~ (l.protocolo or '—')},
+          {'icone': 'badge-check', 'texto': l.situacao},
+        ] if l else []) %}
+{% with abas=consultas, grupo="Consultas" %}{% include "reports/_cabecalho.html" %}{% endwith %}
+{% endwith %}
+
+<main class="rp-wrap rp-wrap--larga">
+  <a class="rp-btn rp-btn--ghost" href="javascript:history.back()" style="align-self:flex-start"><i data-lucide="arrow-left"></i>Voltar à lista</a>
+  {% if erro %}<div class="rp-alerta rp-alerta--erro"><i data-lucide="circle-x"></i><div><b>{{ erro.motivo }}</b>{% if erro.detalhe %} — {{ erro.detalhe }}{% endif %}</div></div>{% endif %}
+  {% if ctx %}
+  {% if ctx.irmaos %}
+  <div class="rp-alerta rp-alerta--info"><i data-lucide="layers"></i><div>Este paciente tem outras linhas nesta conta:
+    {% for i in ctx.irmaos %}<a href="{{ i.detalhe }}">{{ ('orçamento ' ~ i.id_orcamento) if i.id_orcamento else 'itens sem orçamento' }}</a> ({{ i.faturamento_grupo | moeda }}){% if not loop.last %} · {% endif %}{% endfor %}</div></div>
+  {% endif %}
+
+  {{ rp.kpis([
+    {'rotulo': 'Orçado', 'valor': l.orcado, 'formato': 'moeda_curta', 'icone': 'clipboard-check', 'tom': 'cyan', 'hint': ('orçamento ' ~ l.id_orcamento) if l.id_orcamento else 'sem orçamento'},
+    {'rotulo': 'Faturamento', 'valor': l.faturamento_grupo, 'formato': 'moeda_curta', 'icone': 'banknote', 'tom': 'blue', 'hint': (ctx.itens | length) ~ ' itens nesta conta (fora imposto)'},
+    {'rotulo': 'Pré-auditoria', 'valor': l.pre_auditoria, 'formato': 'moeda_curta', 'icone': 'scan-search', 'tom': 'violet', 'hint': (ctx.alterados | length) ~ ' item(ns) alterado(s)'},
+    {'rotulo': 'Fatura operadora', 'valor': l.fatura_operadora, 'formato': 'moeda_curta', 'icone': 'building-2', 'tom': 'teal', 'hint': 'desconto ' ~ (l.desconto_informativo | moeda)},
+    {'rotulo': 'Glosa', 'valor': ctx.glosas | sum(attribute='glosa'), 'formato': 'moeda_curta', 'icone': 'shield-x', 'tom': 'coral', 'hint': ('(xml)' if ctx.tiss_guias else '(planilha)') ~ (' · do paciente na conta' if ctx.glosa_do_paciente else '')},
+  ]) }}
+
+  <div class="rp-grid">
+    <section class="rp-bloco rp-bloco--meia">
+      <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="chart-column-decreasing"></i></span><h2>Cascata desta linha</h2></header>
+      <div class="rp-bloco__corpo">{% with cascata=ctx.cascata, id='cp-cascata' %}{% include "reports/_cascata.html" %}{% endwith %}</div>
+    </section>
+    <section class="rp-bloco rp-bloco--meia">
+      <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="receipt"></i></span><h2>Fatura</h2></header>
+      <div class="rp-bloco__corpo">
+        <dl class="rp-kv">
+          <dt>Conta</dt><dd class="mono">{{ l.id_conta }}</dd>
+          <dt>Competência</dt><dd>{{ l.competencia | fmt }}</dd>
+          <dt>Nota fiscal</dt><dd>{{ l.nota_fiscal or '—' }}{% if l.nf_origem %} <span class="rp-sub">({{ l.nf_origem }})</span>{% endif %}</dd>
+          <dt>Protocolo de entrega</dt><dd class="mono">{{ l.protocolo or '—' }}{% if l.data_entrega %} <span class="rp-sub">entregue {{ l.data_entrega | fmt }}</span>{% endif %}</dd>
+          <dt>Situação</dt><dd>{{ l.situacao }}</dd>
+          <dt>Operadora / pagador</dt><dd>{{ l.operadora }} <span class="rp-sub">({{ l.pagador }})</span></dd>
+          <dt>Unidade</dt><dd>{{ l.unidade }}</dd>
+          <dt>Admissão (IdAdm)</dt><dd class="mono">{{ l.id_admissao or '—' }}</dd>
+          <dt>Tributos (ERP)</dt><dd>{{ l.tributos_erp | moeda }} <span class="rp-sub">informativo</span></dd>
+          <dt>Glosa IW (ERP)</dt><dd>{{ l.glosa_iw | moeda }}</dd>
+        </dl>
+      </div>
+    </section>
+  </div>
+
+  {% if o %}
+  <section class="rp-bloco rp-bloco--inteira">
+    <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="clipboard-check"></i></span><h2>Orçamento {{ o.id_orcamento }}</h2>
+      <span class="rp-bloco__tempo"><a href="/consultas/orcamentos/{{ o.id_orcamento }}">riscos e análise por IA →</a></span></header>
+    <div class="rp-bloco__corpo">
+      <dl class="rp-kv">
+        <dt>Situação</dt><dd>{{ o.situacao }}</dd>
+        <dt>Período</dt><dd>{{ o.inicio | fmt }} a {{ o.fim | fmt }}</dd>
+        <dt>Senha</dt><dd class="mono">{{ o.senha or '—' }}{% if o.validade_senha %} <span class="rp-sub">válida até {{ o.validade_senha | fmt }}</span>{% endif %}</dd>
+        <dt>Orçado cobrável</dt><dd>{{ o.orcado | moeda }} <span class="rp-sub">{{ o.itens }} itens</span></dd>
+        <dt>Faturado em todas as contas</dt><dd>{{ o.faturado | moeda }} <span class="rp-sub">{{ o.contas }} conta(s)</span></dd>
+      </dl>
+      <h3 class="rp-subtitulo">Itens do orçamento</h3>
+      <div class="rp-tabela-wrap" style="max-height: 420px">
+        <table class="rp-tabela rp-tabela--compacta">
+          <thead><tr><th>Recurso</th><th class="num">Qtd</th><th class="num">Qtd coberta</th><th class="num">Preço</th><th class="num">Bruto</th><th class="num">Pacote</th><th class="num">Orçado cobrável</th></tr></thead>
+          <tbody>{% for i in ctx.orcamento_itens %}<tr><td>{{ i.recurso }}<div class="rp-sub">{{ i.categoria }}</div></td><td class="num">{{ i.qtd | fmt }}</td><td class="num">{{ i.qtd_coberta | fmt }}</td><td class="num">{{ i.preco | moeda }}</td><td class="num">{{ i.bruto | moeda }}</td><td class="num">{{ i.pacote | moeda }}</td><td class="num">{{ i.cobrado | moeda }}</td></tr>
+          {% else %}<tr><td colspan="7" class="rp-sub">Orçamento sem itens.</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="rp-bloco rp-bloco--inteira">
+    <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="git-compare-arrows"></i></span><h2>Orçado × faturado nesta conta, por recurso</h2></header>
+    <div class="rp-bloco__corpo rp-tabela-wrap">
+      <table class="rp-tabela rp-tabela--compacta">
+        <thead><tr><th>Desvio</th><th>Recurso</th><th class="num">Qtd orçada</th><th class="num">Qtd faturada</th><th class="num">Qtd cortada (pré)</th><th class="num">Preço orç.</th><th class="num">Preço fat.</th><th class="num">Orçado</th><th class="num">Faturado</th><th class="num">Pré-auditoria</th><th class="num">Diferença</th></tr></thead>
+        <tbody>
+          {% for c in ctx.comparacao %}
+          <tr{% if c.pre_auditoria %} class="rp-linha--pre"{% endif %}>
+            <td>{{ rp.badge(c.tipo, tom_desvio[c.tipo]) }}</td>
+            <td>{{ c.recurso }}<div class="rp-sub">{{ c.categoria }}</div></td>
+            <td class="num">{{ c.qtd_orcada | fmt }}</td><td class="num">{{ c.qtd_faturada | fmt }}</td>
+            <td class="num">{{ c.qtd_pre | fmt if c.qtd_pre else '—' }}</td>
+            <td class="num">{{ c.preco_orcado | moeda if c.preco_orcado is not none else '—' }}</td>
+            <td class="num">{{ c.preco_faturado | moeda if c.preco_faturado is not none else '—' }}</td>
+            <td class="num">{{ c.orcado | moeda }}</td><td class="num">{{ c.faturado | moeda }}</td>
+            <td class="num">{{ c.pre_auditoria | moeda if c.pre_auditoria else '—' }}</td>
+            <td class="num{% if c.dif_valor > 0.5 %} rp-neg{% endif %}">{{ c.dif_valor | moeda }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="rp-sub">Orçado = orçamento inteiro (ele pode ser faturado em mais de uma conta). Faturado = só esta conta. A quantidade cortada na pré-auditoria já está fora da faturada.</p>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="rp-bloco rp-bloco--inteira">
+    <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="scan-search"></i></span><h2>Alterados pela pré-auditoria</h2><span class="rp-bloco__tempo">{{ ctx.alterados | length }} item(ns)</span></header>
+    <div class="rp-bloco__corpo">
+      {% for i in ctx.alterados %}
+      <div class="rp-etapa rp-share--violet">
+        <div class="rp-etapa__topo"><span><b>{{ i.recurso }}</b> <span class="rp-sub">{{ i.categoria }}</span></span><b>{{ i.pre_auditoria | moeda }}</b></div>
+        <div class="rp-sub">Lançado {{ i.qtd | fmt }} × {{ i.preco | moeda }} · cortado {{ i.qtd_pre | fmt }} · faturado {{ i.cobrado | moeda }}{% if i.glosa_iw %} · glosa IW {{ i.glosa_iw | moeda }}{% endif %}</div>
+        <div>Motivo <span class="mono">{{ i.motivo_pre or '—' }}</span> {{ (i.motivo_pre_descricao or '') }}
+          {% if i.tem_comentario %} · {{ rp.comentario_oculto(i.id_item) }}{% endif %}</div>
+      </div>
+      {% else %}<p class="rp-sub">Nenhum item desta linha foi alterado pela pré-auditoria.</p>{% endfor %}
+    </div>
+  </section>
+
+  <section class="rp-bloco rp-bloco--inteira">
+    <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="list"></i></span><h2>Itens da fatura</h2><span class="rp-bloco__tempo">{{ ctx.itens | length }} itens · imposto (tipo 15) fora</span></header>
+    <div class="rp-bloco__corpo rp-tabela-wrap" style="max-height: 640px">
+      <table class="rp-tabela rp-tabela--compacta">
+        <thead><tr><th>Recurso</th><th class="num">Qtd</th><th class="num">Qtd coberta</th><th class="num">Qtd cortada</th><th class="num">Preço</th><th class="num">Bruto</th><th class="num">Pacote</th><th class="num">Pré-auditoria</th><th class="num">Faturado</th><th class="num">Desconto</th><th class="num">Glosa IW</th></tr></thead>
+        <tbody>
+          {% for i in ctx.itens %}
+          <tr{% if i.alterado_pre %} class="rp-linha--pre"{% endif %}>
+            <td>{{ i.recurso }}{% if i.alterado_pre %} {{ rp.badge('pré-auditoria', 'violet') }}{% endif %}{% if i.item_manual %} <span class="rp-sub" title="lançado à mão (USERITEM)">manual</span>{% endif %}<div class="rp-sub">{{ i.categoria }}</div></td>
+            <td class="num">{{ i.qtd | fmt }}</td><td class="num">{{ i.qtd_coberta | fmt }}</td>
+            <td class="num">{{ i.qtd_pre | fmt if i.qtd_pre else '—' }}</td>
+            <td class="num">{{ i.preco | moeda }}</td><td class="num">{{ i.bruto | moeda }}</td><td class="num">{{ i.pacote | moeda }}</td>
+            <td class="num">{{ i.pre_auditoria | moeda if i.pre_auditoria else '—' }}</td>
+            <td class="num">{{ i.cobrado | moeda }}</td>
+            <td class="num">{{ i.desconto | moeda if i.desconto else '—' }}</td>
+            <td class="num">{{ i.glosa_iw | moeda if i.glosa_iw else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="rp-bloco rp-bloco--inteira">
+    <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="file-code-2"></i></span><h2>Retorno da operadora (XML)</h2>
+      <span class="rp-bloco__tempo">{% if ctx.tiss_guias %}demonstrativo {{ ctx.tiss_guias[0].numero_demonstrativo }} · {{ ctx.tiss_guias[0].data_emissao | fmt }}{% else %}sem XML de volta para esta admissão{% endif %}</span></header>
+    <div class="rp-bloco__corpo">
+      {% for g in ctx.tiss_guias %}
+      <dl class="rp-kv">
+        <dt>Operadora</dt><dd>{{ g.operadora_nome }}</dd>
+        <dt>Protocolo / guia</dt><dd class="mono">{{ g.protocolo }} · {{ g.guia_prestador }} <span class="rp-sub">(operadora {{ g.guia_operadora }})</span></dd>
+        <dt>Informado × liberado</dt><dd>{{ g.informado | moeda }} → {{ g.liberado | moeda }} <span class="rp-sub">glosa {{ g.glosa | moeda }} (xml)</span></dd>
+        <dt>Casamento com o ERP</dt><dd>{{ g.situacao }} <span class="rp-sub">{{ g.regra or '' }}</span></dd>
+      </dl>
+      {% endfor %}
+      {% if ctx.tiss_itens %}
+      <div class="rp-tabela-wrap">
+        <table class="rp-tabela rp-tabela--compacta">
+          <thead><tr><th>Procedimento (XML)</th><th>Item do ERP</th><th class="num">Qtd</th><th class="num">Informado</th><th class="num">Processado</th><th class="num">Liberado</th><th class="num">Glosa (xml)</th><th>Motivos (xml)</th></tr></thead>
+          <tbody>{% for i in ctx.tiss_itens %}<tr>
+            <td>{{ i.descricao }}<div class="rp-sub mono">tab. {{ i.tabela }} · {{ i.codigo }}</div></td>
+            <td>{{ i.recurso_erp or ('item ' ~ i.id_item_erp if i.id_item_erp else '—') }}</td>
+            <td class="num">{{ i.quantidade | fmt }}</td><td class="num">{{ i.informado | moeda }}</td><td class="num">{{ i.processado | moeda }}</td><td class="num">{{ i.liberado | moeda }}</td>
+            <td class="num rp-neg">{{ i.glosa | moeda }}</td>
+            <td>{% for m in i.motivos_texto %}<div>{{ m }}</div>{% endfor %}</td>
+          </tr>{% endfor %}</tbody>
+        </table>
+      </div>
+      {% elif ctx.tiss_guias %}<p class="rp-sub">A operadora não glosou nada nesta admissão.</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="rp-bloco rp-bloco--inteira">
+    <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="shield-x"></i></span><h2>Glosa</h2>
+      <span class="rp-bloco__tempo">{{ 'do paciente na conta (todos os orçamentos)' if ctx.glosa_do_paciente else 'deste paciente nesta conta' }}</span></header>
+    <div class="rp-bloco__corpo rp-tabela-wrap">
+      <table class="rp-tabela rp-tabela--compacta">
+        <thead><tr><th>Comp.</th><th>Motivo</th><th>Classificação</th><th>Status (planilha)</th><th>NF</th><th class="num">Faturado (planilha)</th><th class="num">Glosa</th><th class="num">Recorrido (planilha)</th><th class="num">Recuperado (planilha)</th><th class="num">Perda (planilha)</th><th>Prazo de recurso</th><th>Cruzamento</th></tr></thead>
+        <tbody>
+          {% for g in ctx.glosas %}
+          <tr>
+            <td>{{ g.competencia | fmt }}</td>
+            <td><span class="mono">{{ g.motivo or '—' }}</span> <span class="rp-sub">{{ g.origem_rotulo }}</span><div class="rp-sub">{{ (g.descricao or '') | capitalize }}{% if g.origem_glosa == 'xml' and g.motivo_planilha and g.motivo_planilha != g.motivo %} · planilha dizia {{ g.motivo_planilha }}{% endif %}</div></td>
+            <td>{{ g.classificacao or '—' }}</td><td>{{ g.status_glosa or '—' }}</td><td class="mono">{{ g.nota_fiscal or '—' }}</td>
+            <td class="num">{{ g.valor_faturado | moeda }}</td><td class="num rp-neg">{{ g.glosa | moeda }} <span class="rp-sub">{{ g.origem_rotulo }}</span></td>
+            <td class="num">{{ g.valor_recursado | moeda }}</td><td class="num">{{ g.recuperado | moeda }}</td><td class="num">{{ g.perda | moeda }}</td>
+            <td>{{ g.prazo_recurso | fmt }}</td><td>{{ g.situacao }}<div class="rp-sub">{{ g.regra or '' }}</div></td>
+          </tr>
+          {% else %}<tr><td colspan="12" class="rp-sub">Sem glosa na planilha para este paciente nesta conta.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+</main>
+{% endblock %}

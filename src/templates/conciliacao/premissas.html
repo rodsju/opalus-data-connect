@@ -1,0 +1,107 @@
+{% extends "conciliacao/_base.html" %}
+{% set icone_pagina = 'sliders-horizontal' %}
+{% set descricao_pagina = 'As tabelas de apoio da planilha (abas PREMISSAS e DATA). Mudam pouco: foram semeadas do base_glosa.xlsx; cada linha pode ser incluída, editada ou excluída aqui, ou a tabela inteira substituída por um CSV. Os motivos TISS vêm da ANS e não se editam.' %}
+{% set chips_pagina = [] %}
+
+{% block pagina %}
+{% if pendencias or manual %}
+<div class="rp-alerta rp-alerta--aviso"><i data-lucide="triangle-alert"></i><div>
+  <b>Na carga ativa (#{{ carga.id }}):</b>
+  {% for p in pendencias %}{{ p.linhas }} linhas {{ p.pendencia }}{% if p.convenios %} ({{ p.convenios[:8] | join(', ') }}{% if p.convenios | length > 8 %}…{% endif %}){% endif %}{% if not loop.last %}; {% endif %}{% endfor %}
+  {% if manual %}{% if pendencias %}; {% endif %}{{ manual }} linhas com convênio fórmula digitado diferente do de-para{% endif %}.
+</div></div>
+{% endif %}
+
+<div class="rp-faixas">
+  {% for t, d in tipos.items() %}
+  <a class="rp-faixa rp-kpi--{{ 'blue' if t == tipo else 'navy' }}" href="?tipo={{ t }}" style="text-decoration:none">
+    <span class="rp-faixa__nome">{{ d.titulo }}</span>
+    <b>{{ contagens.get(t, 0) }}</b>
+    <span class="rp-sub">linhas · {{ d.origem }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+<section class="rp-bloco rp-bloco--inteira">
+  <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="table-2"></i></span><h2>{{ definicao.titulo }}</h2><span class="rp-bloco__onde">{{ definicao.origem }}</span></header>
+  <div class="rp-bloco__corpo">
+    <p>{{ definicao.descricao }}</p>
+    {% if tipo == 'motivo_tiss' %}
+    <div class="rp-alerta rp-alerta--info">
+      <i data-lucide="refresh-cw"></i>
+      <div>
+        {% if sincronizacao %}
+        <b>Última sincronização:</b> {{ sincronizacao.executada_em | fmt }}{% if sincronizacao.autor %} por {{ sincronizacao.autor }}{% endif %} —
+        versão {{ sincronizacao.versao }}{% if sincronizacao.detalhes.versao_anterior %} + {{ sincronizacao.detalhes.versao_anterior }}{% endif %},
+        {{ sincronizacao.detalhes.vigentes }} vigentes e {{ sincronizacao.detalhes.descontinuados }} descontinuados.
+        {% else %}
+        Ainda não sincronizada com a ANS.
+        {% endif %}
+        <div class="rp-sub">Fonte: Padrão TISS › Componente de Representação de Conceitos em Saúde › Tabela 38. Baixa só o xlsx de terminologias (≈1 MB) de dentro do zip da ANS. Códigos que saíram da versão vigente continuam gravados como descontinuados, porque as operadoras ainda glosam com eles.</div>
+        <form method="post" action="/conciliacao/premissas/motivo_tiss/sincronizar" style="margin-top: 10px">
+          <button class="rp-btn" type="submit"><i data-lucide="cloud-download"></i>Sincronizar com a ANS</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+    <form class="rp-form" method="post" action="/conciliacao/premissas/{{ tipo }}" enctype="multipart/form-data">
+      <label class="rp-campo rp-campo--largo"><span>Substituir por CSV (colunas: {{ colunas | join(', ') }})</span><input type="file" name="arquivo" accept=".csv,text/csv" required></label>
+      <button class="rp-btn" type="submit"><i data-lucide="upload"></i>Enviar</button>
+    </form>
+
+    {% set tipos_col = dict(definicao.colunas) %}
+    {# Valor de um campo no formulário: o rascunho (depois de erro) ou o valor gravado, no formato de digitação #}
+    {% macro valor_form(c, v) -%}
+      {%- if v is none -%}
+      {%- elif tipos_col[c] == 'data' -%}{{ v.strftime('%Y-%m-%d') if v.strftime is defined else v }}
+      {%- elif tipos_col[c] == 'booleano' -%}{{ 'sim' if v else 'não' }}
+      {%- elif tipos_col[c] == 'numero' -%}{{ ('%g' | format((v * 100) if c in percentuais else v)) | replace('.', ',') }}
+      {%- else -%}{{ v }}{%- endif -%}
+    {%- endmacro %}
+    {% macro campo(c, valor, form_id) -%}
+      {%- set t = tipos_col[c] -%}
+      {%- if t == 'booleano' -%}
+      <select name="{{ c }}" form="{{ form_id }}"><option value=""></option><option value="sim"{% if valor == 'sim' %} selected{% endif %}>sim</option><option value="não"{% if valor == 'não' %} selected{% endif %}>não</option></select>
+      {%- else -%}
+      <input name="{{ c }}" form="{{ form_id }}" value="{{ valor }}"{% if t == 'data' %} type="date"{% else %} type="text"{% if t in ('numero', 'inteiro') %} inputmode="decimal" size="8"{% endif %}{% endif %}{% if c in definicao.chave %} required{% endif %} placeholder="{{ c }}{{ ' (%)' if c in percentuais else '' }}">
+      {%- endif -%}
+    {%- endmacro %}
+
+    {% if editavel %}
+    <form id="nova-linha" method="post" action="/conciliacao/premissas/{{ tipo }}/linhas"></form>
+    {% if editar %}<form id="editar-linha" method="post" action="/conciliacao/premissas/{{ tipo }}/linhas/{{ editar }}"></form>{% endif %}
+    <p class="rp-sub">Edite linha a linha abaixo ou substitua a tabela inteira pelo CSV. Campos com * são a chave (não podem repetir){% if colunas | select('in', percentuais) | list %}; impostos em %{% endif %}.</p>
+    {% endif %}
+    <div class="rp-tabela-wrap" style="max-height: 560px">
+      <table class="rp-tabela rp-tabela--compacta rp-tabela--editavel">
+        <thead><tr>{% for c in colunas %}<th>{{ c }}{% if editavel and c in definicao.chave %} *{% endif %}{% if c in percentuais %} (%){% endif %}</th>{% endfor %}{% if editavel %}<th></th>{% endif %}</tr></thead>
+        <tbody>
+          {% if editavel %}
+          <tr class="rp-linha--nova">
+            {% for c in colunas %}<td>{{ campo(c, rascunho.get(c, '') if not editar else '', 'nova-linha') }}</td>{% endfor %}
+            <td><button class="rp-btn rp-btn--mini" type="submit" form="nova-linha"><i data-lucide="plus"></i>Incluir</button></td>
+          </tr>
+          {% endif %}
+          {% for l in linhas %}
+          {% if editavel and editar == l.id %}
+          <tr class="rp-linha--editando">
+            {% for c in colunas %}<td>{{ campo(c, rascunho[c] if rascunho else valor_form(c, l[c]), 'editar-linha') }}</td>{% endfor %}
+            <td class="rp-acoes"><button class="rp-btn rp-btn--mini" type="submit" form="editar-linha"><i data-lucide="check"></i>Salvar</button>
+              <a class="rp-btn rp-btn--ghost rp-btn--mini" href="?tipo={{ tipo }}">Cancelar</a></td>
+          </tr>
+          {% else %}
+          <tr>{% for c in colunas %}<td{% if c.startswith('imposto') or c.startswith('prazo') or c == 'dia' %} class="num"{% endif %}>{% if l[c] is none %}{% elif c.startswith('imposto') %}{{ (l[c] * 100) | pct(2) }}{% else %}{{ l[c] | fmt }}{% endif %}</td>{% endfor %}
+            {% if editavel %}<td class="rp-acoes">
+              <a class="rp-btn rp-btn--ghost rp-btn--mini" href="?tipo={{ tipo }}&editar={{ l.id }}" title="Editar"><i data-lucide="pencil"></i></a>
+              <form method="post" action="/conciliacao/premissas/{{ tipo }}/linhas/{{ l.id }}/excluir" onsubmit="return confirm('Excluir esta linha de {{ definicao.titulo }}?')">
+                <button class="rp-btn rp-btn--ghost rp-btn--mini" type="submit" title="Excluir"><i data-lucide="trash-2"></i></button></form>
+            </td>{% endif %}
+          </tr>
+          {% endif %}
+          {% else %}<tr><td colspan="{{ colunas | length + (1 if editavel else 0) }}" class="rp-sub">Tabela vazia.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

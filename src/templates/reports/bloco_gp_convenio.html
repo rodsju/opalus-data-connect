@@ -1,0 +1,21 @@
+{% import "reports/_macros.html" as rp %}
+<div class="rp-duo">
+  <div class="rp-duo__graf">{{ rp.grafico(b.slug, bloco.grafico, bloco.altura) }}</div>
+  <div class="rp-duo__tab rp-tabela-wrap">
+    <table class="rp-tabela rp-tabela--compacta">
+      <thead><tr><th>Convênio</th><th class="num">Glosa</th><th class="num">Taxa</th><th class="num">Recup.</th><th class="num">Part.</th></tr></thead>
+      <tbody>
+        {% for l in bloco.linhas %}
+        <tr{% if l.outros %} class="rp-outros"{% endif %}>
+          <td>{% if l.outros %}{{ l.convenio }}{% else %}<a href="/consultas/glosas?convenio={{ l.convenio | urlencode }}">{{ l.convenio }}</a>{% endif %}<div class="rp-sub">{{ l.linhas | valor('int') }} linhas</div></td>
+          <td class="num rp-neg">{{ l.glosa | moeda_curta }}</td>
+          <td class="num">{{ l.taxa_glosa | pct if not l.outros else '' }}</td>
+          <td class="num rp-pos-txt">{{ l.taxa_recuperacao | pct if not l.outros else '' }}</td>
+          {{ rp.share(l.pct, 'coral') }}
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td>Total</td><td class="num">{{ bloco.total.glosa | moeda_curta }}</td><td></td><td class="num">{{ (bloco.total.recuperado_bruto / bloco.total.recursado * 100) | pct if bloco.total.recursado else '—' }}</td><td></td></tr></tfoot>
+    </table>
+  </div>
+</div>

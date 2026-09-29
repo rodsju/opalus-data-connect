@@ -1,0 +1,17 @@
+<div class="rp-tabela-wrap">
+  <table class="rp-tabela rp-tabela--compacta rp-calor">
+    <thead><tr><th>Convênio</th>{% for m in bloco.motivos %}<th class="num mono">{{ m }}</th>{% endfor %}<th class="num">Demais</th><th class="num">Total</th></tr></thead>
+    <tbody>
+      {% for linha in bloco.matriz %}
+      <tr>
+        <td>{{ linha.convenio }}</td>
+        {% for c in linha.celulas %}
+        <td class="num" style="--calor: {{ c.intensidade }}%">{{ c.valor | moeda_curta if c.valor else '' }}</td>
+        {% endfor %}
+        <td class="num rp-sub">{{ linha.demais | moeda_curta if linha.demais > 1 else '' }}</td>
+        <td class="num"><b>{{ linha.total | moeda_curta }}</b></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

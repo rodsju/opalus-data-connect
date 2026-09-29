@@ -89,6 +89,15 @@ amostras:
 schema:
 	docker-compose ${DOCKER_COMPOSE_FILE} exec app python scripts/mapear_oracle.py --somente-ddl
 
+# Conciliação da planilha de glosa (src/conciliacao). Ex.:
+#   make conciliacao ARGS=schema
+#   make conciliacao ARGS=premissas                  # sementes de data/conciliacao
+#   make conciliacao ARGS="carga /tmp/base.csv --hoje 2026-09-18"
+#   make conciliacao ARGS=cruzar                     # precisa da VPN
+#   make conciliacao ARGS=tiss                       # motivos de glosa (Tabela 38) da ANS
+conciliacao:
+	docker-compose ${DOCKER_COMPOSE_FILE} exec app python scripts/conciliacao.py $(ARGS)
+
 # Confere como o .env foi lido e se o Oracle responde, sem mapear nada
 catalogo_env:
 	docker-compose ${DOCKER_COMPOSE_FILE} exec app python scripts/mapear_oracle.py --conferir-env

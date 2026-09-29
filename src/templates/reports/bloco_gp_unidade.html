@@ -1,0 +1,16 @@
+{% import "reports/_macros.html" as rp %}
+<table class="rp-tabela rp-tabela--compacta">
+  <thead><tr><th>Empresa · filial</th><th class="num">Glosa</th><th class="num">Taxa</th><th class="num">Recup.</th><th class="num">Part.</th></tr></thead>
+  <tbody>
+    {% for l in bloco.linhas %}
+    <tr>
+      <td>{{ l.empresa }}{% if l.filial and l.filial != l.empresa %} <span class="rp-sub">· {{ l.filial }}</span>{% endif %}</td>
+      <td class="num rp-neg">{{ l.glosa | moeda_curta }}</td>
+      <td class="num">{{ l.taxa_glosa | pct }}</td>
+      <td class="num rp-pos-txt">{{ l.taxa_recuperacao | pct }}</td>
+      {{ rp.share(l.pct, 'violet') }}
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot><tr><td>Total</td><td class="num">{{ bloco.total.glosa | moeda_curta }}</td><td></td><td></td><td></td></tr></tfoot>
+</table>

@@ -1,0 +1,10 @@
+{% import "reports/_macros.html" as rp %}
+<div class="rp-faixas">
+  {% for f in bloco.faixas %}
+  <a class="rp-faixa rp-kpi--{{ f.tom if f.tom != 'neutral' else 'navy' }}" style="text-decoration:none" href="/consultas/glosas?status=AN%C3%81LISE+OPALUS&prazo={{ f.faixa | urlencode }}">
+    <span class="rp-faixa__nome">{{ f.faixa }}</span>
+    <b>{{ f.glosa | moeda_curta }}</b>
+    <span class="rp-sub">{{ f.linhas | valor('int') }} glosas · ver casos →</span>
+  </a>
+  {% endfor %}
+</div>

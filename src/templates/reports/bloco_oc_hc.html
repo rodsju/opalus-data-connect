@@ -1,0 +1,3 @@
+{% import "reports/_macros.html" as rp %}
+<div class="rp-destaques rp-destaques--magenta"><span><b>{{ bloco.total | valor('int') }}</b> pacientes em home care</span><a class="rp-sub" href="/consultas/pacientes?tipo=1">ver pacientes →</a></div>
+{{ rp.grafico(b.slug, bloco.grafico, bloco.altura) }}

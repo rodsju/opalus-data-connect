@@ -1,0 +1,26 @@
+{# Hero dos /reports + abas entre relatórios. Espera titulo, icone, descricao, abas, chips. #}
+{% import "reports/_macros.html" as rp %}
+<section class="rp-hero">
+  <div class="rp-hero__brilho" aria-hidden="true"></div>
+  <div class="rp-hero__inner">
+    {% set grupo_nome = grupo if grupo is defined and grupo else ('Conciliação' if abas_conciliacao else 'Reports') %}
+    <div class="rp-hero__crumb"><i data-lucide="{{ {'Conciliação': 'git-compare-arrows', 'Consultas': 'search'}.get(grupo_nome, 'bar-chart-3') }}"></i> {{ grupo_nome }}</div>
+    <h1><span class="rp-hero__icone"><i data-lucide="{{ icone }}"></i></span>{{ titulo }}</h1>
+    <p>{{ descricao }}</p>
+    {% if chips %}
+    <div class="rp-hero__chips">
+      {% for chip in chips %}<span class="rp-chip"><i data-lucide="{{ chip.icone }}"></i>{{ chip.texto }}{% if chip.paciente %} {{ rp.nome_paciente(chip.paciente) }}{% endif %}</span>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  <nav class="rp-abas" aria-label="Relatórios">
+    {% for aba in abas %}
+    <a href="{{ aba.href }}{% if aba.slug != 'auditoria' and filtros is defined and filtros and filtros.mes %}?mes={{ filtros.mes }}{% endif %}" class="rp-aba{% if aba.ativo or aba.href == caminho %} ativo{% endif %}">
+      <i data-lucide="{{ aba.icone }}"></i>{{ aba.titulo }}
+    </a>
+    {% endfor %}
+    {% if not abas_conciliacao and not (grupo is defined and grupo) %}
+    <a href="/reports/blocos" class="rp-aba{% if caminho == '/reports/blocos' %} ativo{% endif %}"><i data-lucide="layout-grid"></i>Blocos</a>
+    {% endif %}
+  </nav>
+</section>

@@ -1,0 +1,56 @@
+{% extends "conciliacao/_base.html" %}
+{% set icone_pagina = 'git-compare-arrows' %}
+{% set descricao_pagina = 'Quanto da planilha casa com o ERP (protocolo de entrega + paciente, ou paciente + competência + valor) e onde não casa. Visão agregada; os casos linha a linha ficam em Consultas › Glosas.' %}
+{% set chips_pagina = ([{'icone': 'sheet', 'texto': 'Carga #' ~ carga.id}, {'icone': 'clock', 'texto': 'Cruzada em ' ~ (carga.cruzada_em | fmt)}] if carga and carga.cruzada_em else []) %}
+
+{% block pagina %}
+{% if sem_cruzamento %}
+<div class="rp-cta">
+  <i data-lucide="git-compare-arrows"></i>
+  <div>
+    {% if carga %}
+    <h3>A carga #{{ carga.id }} ainda não foi cruzada com o ERP</h3>
+    <p>O cruzamento consulta o Oracle ao vivo (precisa da VPN).</p>
+    <form method="post" action="/conciliacao/reconciliar"><button class="rp-btn" type="submit"><i data-lucide="refresh-cw"></i>Cruzar agora</button></form>
+    {% else %}
+    <h3>Nenhuma carga da planilha</h3>
+    <p>Carregue o CSV da aba BASE OPALUS para cruzar com o ERP.</p>
+    <a class="rp-btn" href="/conciliacao/cargas"><i data-lucide="upload"></i>Carregar planilha</a>
+    {% endif %}
+  </div>
+</div>
+{% else %}
+{{ rp.kpis(cards) }}
+
+<section class="rp-bloco rp-bloco--inteira">
+  <header class="rp-bloco__head">
+    <span class="rp-bloco__icone"><i data-lucide="chart-column"></i></span><h2>Glosa: planilha × IW por competência</h2>
+    <form method="post" action="/conciliacao/reconciliar"><button class="rp-btn rp-btn--ghost" type="submit"><i data-lucide="refresh-cw"></i>Reconciliar</button></form>
+  </header>
+  <div class="rp-bloco__corpo">
+    <div class="rp-destaques rp-destaques--magenta">
+      <span><b>{{ glosa_planilha | moeda_curta }}</b> de glosa na planilha</span>
+      <span><b>{{ glosa_iw | moeda_curta }}</b> registrados no IW para as mesmas contas</span>
+      {% if glosa_planilha %}<span>O IW cobre <b>{{ (glosa_iw / glosa_planilha * 100) | pct }}</b> da glosa controlada na planilha</span>{% endif %}
+    </div>
+    {{ rp.grafico('cruzamento', grafico, 320) }}
+  </div>
+</section>
+
+<section class="rp-bloco rp-bloco--inteira">
+  <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="building-2"></i></span><h2>Onde não bate, por convênio</h2></header>
+  <div class="rp-bloco__corpo rp-tabela-wrap">
+    <table class="rp-tabela rp-tabela--compacta">
+      <thead><tr><th>Convênio</th><th class="num">Linhas</th><th class="num">Conciliadas</th><th class="num">Divergentes</th><th class="num">Não achadas</th><th class="num">Diferença (planilha − ERP)</th></tr></thead>
+      <tbody>
+        {% for c in convenios %}
+        <tr><td><a href="/consultas/glosas?convenio={{ c.convenio | urlencode }}&situacao=DIVERGENTE">{{ c.convenio }}</a></td><td class="num">{{ c.linhas }}</td>{{ rp.share((c.conciliadas / c.linhas * 100) if c.linhas else 0, 'teal') }}<td class="num">{{ c.divergentes }}</td><td class="num">{{ c.nao_achadas }}</td><td class="num">{{ c.diferenca | moeda }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="rp-alerta rp-alerta--info"><i data-lucide="search"></i><div>As linhas (paciente por código, protocolo, conta do ERP, diferença) estão em <a href="/consultas/glosas">Consultas › Glosas</a>, com filtro por situação do cruzamento e exportação CSV.</div></div>
+{% endif %}
+{% endblock %}

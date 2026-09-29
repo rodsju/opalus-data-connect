@@ -70,4 +70,20 @@
   --chart-8:#009597;
   --chart-grid:var(--grey-200);
   --chart-axis:var(--grey-400);
+
+  /* Data viz vivid — relatórios. Ordem pensada para séries vizinhas contrastarem. */
+  --chart-vivid-1:var(--vivid-blue);
+  --chart-vivid-2:var(--vivid-teal);
+  --chart-vivid-3:var(--vivid-violet);
+  --chart-vivid-4:var(--vivid-amber);
+  --chart-vivid-5:var(--vivid-coral);
+  --chart-vivid-6:var(--vivid-cyan);
+  --chart-vivid-7:var(--vivid-magenta);
+  --chart-vivid-8:var(--vivid-green);
+
+  --report-accent:var(--vivid-blue);
+  --report-positive:var(--vivid-teal);
+  --report-negative:var(--vivid-coral);
+  --report-attention:var(--vivid-amber);
 }
+

@@ -1,0 +1,43 @@
+{# Moldura de um bloco: cabeçalho, estado (erro/vazio/dados) e "como é calculado". Espera `b`. #}
+{% set bloco = b.dados %}
+{# Na galeria (b.relatorio) a faixa de KPIs ganha moldura, título e explicação. #}
+{% set largura = 'inteira' if b.relatorio and b.largura == 'faixa' else b.largura %}
+<section class="rp-bloco rp-bloco--{{ largura }}" id="bloco-{{ b.slug }}">
+  {% if largura != 'faixa' %}
+  <header class="rp-bloco__head">
+    <span class="rp-bloco__icone"><i data-lucide="{{ b.icone }}"></i></span>
+    <h2>{{ b.titulo }}</h2>
+    {% if b.relatorio %}<span class="rp-bloco__onde">{{ b.relatorio }}</span>{% endif %}
+    {% if b.ms is not none %}<span class="rp-bloco__tempo" title="Tempo de consulta"><i data-lucide="timer"></i>{{ (b.ms / 1000) | round(1) }} s</span>{% endif %}
+  </header>
+  {% endif %}
+  <div class="rp-bloco__corpo">
+    {% if bloco.erro %}
+    <div class="rp-estado rp-estado--erro">
+      <i data-lucide="plug-zap"></i>
+      <div><b>Item indisponível</b><span>{{ bloco.erro }}{% if bloco.dica %} — {{ bloco.dica }}{% endif %}</span></div>
+    </div>
+    {% elif bloco.vazio %}
+    <div class="rp-estado">
+      <i data-lucide="inbox"></i>
+      <div><b>Sem dados no recorte</b><span>Nenhuma linha para o período e a unidade escolhidos.</span></div>
+    </div>
+    {% else %}
+    {% include b.partial %}
+    {% endif %}
+  </div>
+  {% if b.itens and largura != 'faixa' %}
+  <details class="rp-como">
+    <summary><i data-lucide="info"></i> Como é calculado</summary>
+    <dl>
+      {% for item in b.itens %}
+      <div>
+        <dt>{{ item.titulo }}</dt>
+        <dd>{{ item.negocio }}</dd>
+        <dd class="rp-como__tec">{{ item.tecnico }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+  </details>
+  {% endif %}
+</section>

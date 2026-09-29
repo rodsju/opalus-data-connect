@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block head %}<link rel="stylesheet" href="/static/css/reports.css">{% endblock %}
+
+{% block conteudo %}
+{% with icone='layout-grid', descricao='Todos os blocos com dados de amostra — para ver o visual e ler como cada número é calculado, sem consultar o Oracle.', chips=[{'icone': 'flask-conical', 'texto': 'Dados de amostra'}, {'icone': 'blocks', 'texto': (blocos | length) ~ ' blocos'}] %}
+{% include "reports/_cabecalho.html" %}
+{% endwith %}
+
+<main class="rp-wrap">
+  <div class="rp-alerta rp-alerta--info">
+    <i data-lucide="flask-conical"></i>
+    <div>Os números abaixo são <b>fictícios</b>. Cada bloco é um módulo em <span class="mono">src/reports/bloco_*.py</span> com a SQL, o montador e o partial; os relatórios só escolhem quais blocos compor.</div>
+  </div>
+  <div class="rp-grid">
+    {% for b in blocos %}{% include "reports/_bloco.html" %}{% endfor %}
+  </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/vendor/chart.umd.min.js"></script>
+<script src="/static/js/reports.js"></script>
+{% endblock %}

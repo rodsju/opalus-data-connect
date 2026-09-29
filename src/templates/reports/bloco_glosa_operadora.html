@@ -1,0 +1,11 @@
+{% import "reports/_macros.html" as rp %}
+{{ rp.grafico(b.slug, bloco.grafico, bloco.altura) }}
+<table class="rp-tabela rp-tabela--compacta">
+  <thead><tr><th>Operadora</th><th class="num">Itens</th><th class="num">Glosa</th><th class="num">Part.</th></tr></thead>
+  <tbody>
+    {% for l in bloco.linhas %}
+    <tr{% if l.outros %} class="rp-outros"{% endif %}><td>{{ l.operadora }}</td><td class="num">{{ l.itens_glosados | valor('int') }}</td><td class="num">{{ l.glosa | moeda_curta }}</td>{{ rp.share(l.pct, 'coral') }}</tr>
+    {% endfor %}
+  </tbody>
+  <tfoot><tr><td>Total</td><td class="num">{{ bloco.total.itens_glosados | valor('int') }}</td><td class="num">{{ bloco.total.glosa | moeda_curta }}</td><td></td></tr></tfoot>
+</table>

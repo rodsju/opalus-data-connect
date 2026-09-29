@@ -1,0 +1,27 @@
+{# Casca das páginas de Conciliação: hero + abas do grupo, estilos dos reports. #}
+{% extends "base.html" %}
+{% import "reports/_macros.html" as rp %}
+{% block head %}<link rel="stylesheet" href="/static/css/reports.css">{% endblock %}
+
+{% block conteudo %}
+{% with icone=icone_pagina, descricao=descricao_pagina, chips=chips_pagina %}
+{% include "reports/_cabecalho.html" %}
+{% endwith %}
+<main class="rp-wrap">
+  {% if erro_banco %}
+  <div class="rp-alerta rp-alerta--erro"><i data-lucide="database-zap"></i><div><b>Falha ao ler o Postgres.</b> {{ erro_banco }}</div></div>
+  {% endif %}
+  {% if aviso %}
+  <div class="rp-alerta rp-alerta--info"><i data-lucide="circle-check"></i><div>{{ aviso }}</div></div>
+  {% endif %}
+  {% if erro %}
+  <div class="rp-alerta rp-alerta--erro"><i data-lucide="circle-x"></i><div><b>{{ erro.motivo }}</b>{% if erro.detalhe %} — {{ erro.detalhe }}{% endif %}</div></div>
+  {% endif %}
+  {% if not erro_banco %}{% block pagina %}{% endblock %}{% endif %}
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/vendor/chart.umd.min.js"></script>
+<script src="/static/js/reports.js"></script>
+{% endblock %}

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block head %}<link rel="stylesheet" href="/static/css/reports.css">{% endblock %}
+
+{% block conteudo %}
+{% set chips = [] %}
+{% if not relatorio.sem_periodo %}{% set _ = chips.append({'icone': 'calendar', 'texto': ('Competência ' ~ filtros.rotulo_periodo) if filtros.mes else 'Todas as competências'}) %}{% endif %}
+{% set _ = chips.append({'icone': 'building', 'texto': filtros.unidade or 'Todas as unidades'}) %}
+{% if filtros.convenio %}{% set _ = chips.append({'icone': 'building-2', 'texto': filtros.convenio}) %}{% endif %}
+{% if filtros.motivo %}{% set _ = chips.append({'icone': 'tag', 'texto': 'Motivo ' ~ filtros.motivo}) %}{% endif %}
+{% if filtros.tipo %}{% set _ = chips.append({'icone': 'hospital', 'texto': filtros.rotulo_tipo}) %}{% endif %}
+{% if relatorio.fonte == 'planilha' %}
+{% if carga %}{% set _ = chips.append({'icone': 'sheet', 'texto': 'Carga #' ~ carga.id ~ ' · referência ' ~ (carga.data_referencia | fmt)}) %}{% endif %}
+{% else %}
+{% set _ = chips.append({'icone': 'database', 'texto': 'Oracle ao vivo · ' ~ ((ms_total / 1000) | round(1)) ~ ' s'}) %}
+{% endif %}
+{% with titulo=relatorio.titulo, icone=relatorio.icone, descricao=relatorio.descricao %}
+{% include "reports/_cabecalho.html" %}
+{% endwith %}
+
+<form class="rp-filtros" method="get" action="/reports/{{ slug }}">
+  {% if not relatorio.sem_periodo %}
+  <label class="rp-campo">
+    <span>Competência{% if relatorio.periodo_opcional %} (vazio = todas){% endif %}</span>
+    <input type="month" name="mes" value="{{ filtros.mes }}"{% if not relatorio.periodo_opcional %} required{% endif %}>
+  </label>
+  {% endif %}
+  <label class="rp-campo rp-campo--largo">
+    <span>{{ {'provider': 'Unidade de negócio (provider)', 'planilha': 'Empresa · filial'}.get(relatorio.dimensao, 'Unidade (homecare)') }}</span>
+    {% if unidades %}
+    <select name="unidade">
+      <option value="">Todas as unidades</option>
+      {% for u in unidades %}<option value="{{ u }}"{% if u | upper == filtros.unidade | upper %} selected{% endif %}>{{ u }}</option>{% endfor %}
+    </select>
+    {% else %}
+    <input type="text" name="unidade" value="{{ filtros.unidade }}" placeholder="Todas as unidades">
+    {% endif %}
+  </label>
+  {% if relatorio.filtro_convenio %}
+  <label class="rp-campo rp-campo--largo">
+    <span>Convênio</span>
+    <select name="convenio">
+      <option value="">Todos os convênios</option>
+      {% for c in convenios %}<option value="{{ c }}"{% if c == filtros.convenio %} selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  {% if relatorio.filtro_tipo is not defined or relatorio.filtro_tipo %}
+  <label class="rp-campo">
+    <span>Tipo de atendimento</span>
+    <select name="tipo">{% for k, v in filtros.TIPOS.items() %}<option value="{{ k }}"{% if k == filtros.tipo %} selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+  </label>
+  {% endif %}
+  {% if relatorio.filtro_motivo %}
+  <label class="rp-campo rp-campo--largo">
+    <span>Motivo (TISS)</span>
+    <select name="motivo">
+      <option value="">Todos os motivos</option>
+      {% for m in motivos %}<option value="{{ m.motivo }}"{% if m.motivo == filtros.motivo %} selected{% endif %}>{{ m.motivo }}{% if m.descricao %} · {{ m.descricao | capitalize | truncate(48) }}{% endif %}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  <button class="rp-btn" type="submit"><i data-lucide="refresh-cw"></i>Atualizar</button>
+  {% if filtros.unidade or filtros.convenio or filtros.motivo or filtros.tipo %}<a class="rp-btn rp-btn--ghost" href="/reports/{{ slug }}?mes={{ filtros.mes }}">Limpar filtros</a>{% endif %}
+</form>
+
+<main class="rp-wrap">
+  {% if aviso_mes %}
+  <div class="rp-alerta rp-alerta--aviso"><i data-lucide="calendar-x"></i><div>{{ aviso_mes }}</div></div>
+  {% endif %}
+  {% if sem_conexao %}
+  <div class="rp-alerta rp-alerta--erro">
+    <i data-lucide="unplug"></i>
+    <div><b>Oracle indisponível.</b> {{ sem_conexao.erro }}{% if sem_conexao.dica %} — {{ sem_conexao.dica }}{% endif %}.
+      Os blocos abaixo ficam vazios até a conexão voltar. <a href="/reports/blocos">Ver os blocos com dados de amostra</a>.</div>
+  </div>
+  {% endif %}
+  {% if relatorio.aviso_forte %}
+  <div class="rp-alerta rp-alerta--aviso"><i data-lucide="triangle-alert"></i><div><b>Desatualizado.</b> {{ relatorio.aviso_forte }} <a href="/reports/glosa-planilha">Abrir Glosa (xml/planilha)</a>.</div></div>
+  {% endif %}
+  {% if sem_carga %}
+  <div class="rp-cta">
+    <i data-lucide="upload-cloud"></i>
+    <div>
+      <h3>Nenhuma carga da planilha ainda</h3>
+      <p>Este relatório lê a base de glosa enviada por CSV. Exporte a aba BASE OPALUS do base_glosa.xlsx e carregue em Conciliação › Cargas.</p>
+      <a class="rp-btn" href="/conciliacao/cargas"><i data-lucide="upload"></i>Carregar planilha</a>
+    </div>
+  </div>
+  {% endif %}
+  {% if relatorio.aviso %}
+  <div class="rp-alerta rp-alerta--info"><i data-lucide="info"></i><div>{{ relatorio.aviso }}</div></div>
+  {% endif %}
+
+  <div class="rp-grid">
+    {% for b in blocos %}{% include "reports/_bloco.html" %}{% endfor %}
+  </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/vendor/chart.umd.min.js"></script>
+<script src="/static/js/reports.js"></script>
+{% endblock %}

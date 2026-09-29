@@ -1,0 +1,19 @@
+{% import "reports/_macros.html" as rp %}
+{{ rp.kpis(bloco.cards) }}
+<div class="rp-duo rp-duo--pilha">
+  <div class="rp-duo__graf">{{ rp.grafico(b.slug, bloco.grafico, 300) }}</div>
+  <div class="rp-duo__tab">
+    <table class="rp-tabela">
+      <thead><tr><th>Unidade</th><th class="num">Docs</th><th class="num">Declarado</th><th class="num">Reconhecido</th><th class="num">% reconh.</th></tr></thead>
+      <tbody>
+        {% for u in bloco.unidades %}
+        <tr><td>{{ u.unidade }}</td><td class="num">{{ u.docs | valor('int') }}</td><td class="num">{{ u.declarado | moeda_curta }}</td><td class="num">{{ u.reconhecido | moeda_curta }}</td>{{ rp.share(u.pct_reconhecido, 'teal') }}</tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td>Total</td><td class="num">{{ bloco.total.docs | valor('int') }}</td><td class="num">{{ bloco.total.declarado | moeda_curta }}</td><td class="num">{{ bloco.total.reconhecido | moeda_curta }}</td><td class="num">{{ bloco.total.pct_reconhecido | pct }}</td></tr></tfoot>
+    </table>
+    <div class="rp-legenda rp-legenda--status">
+      {% for s in bloco.por_status %}<span>{{ rp.badge(s.status, 'info' if s.status == 'Declarado' else ('success' if 'total' in s.status else 'warning')) }} {{ s.docs | valor('int') }} docs · {{ s.declarado | moeda_curta }}</span>{% endfor %}
+    </div>
+  </div>
+</div>

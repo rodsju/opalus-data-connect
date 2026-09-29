@@ -1,0 +1,137 @@
+{% extends "conciliacao/_base.html" %}
+{% set icone_pagina = 'upload' %}
+{% set descricao_pagina = 'Envie o CSV da aba BASE OPALUS. Cada envio é uma foto completa: o app recalcula as fórmulas da planilha, compara com a carga anterior e cruza com o ERP.' %}
+{% set chips_pagina = [{'icone': 'history', 'texto': (lista | length) ~ ' cargas'}] %}
+
+{% block pagina %}
+{% if sem_premissas %}
+<div class="rp-alerta rp-alerta--aviso"><i data-lucide="sliders-horizontal"></i><div><b>Premissas vazias.</b> Sem imposto, prazo e de-para o recálculo não funciona. Rode <span class="mono">make conciliacao ARGS=premissas</span> ou envie os CSVs em <a href="/conciliacao/premissas">Premissas</a>.</div></div>
+{% endif %}
+
+<section class="rp-bloco rp-bloco--inteira">
+  <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="upload-cloud"></i></span><h2>Nova carga</h2></header>
+  <div class="rp-bloco__corpo">
+    <form class="rp-form" method="post" action="/conciliacao/cargas" enctype="multipart/form-data">
+      <label class="rp-campo rp-campo--largo"><span>CSV da aba BASE OPALUS</span><input type="file" name="arquivo" accept=".csv,text/csv" required></label>
+      <label class="rp-campo"><span>Data de referência (HOJE)</span><input type="date" name="data_referencia" value="{{ hoje.isoformat() }}" required></label>
+      <button class="rp-btn" type="submit"><i data-lucide="upload"></i>Carregar e conciliar</button>
+    </form>
+    <p class="rp-sub">Aceita separador <span class="mono">;</span> ou <span class="mono">,</span>, decimal com vírgula e datas dd/mm/aaaa ou em número do Excel. As linhas de total acima do cabeçalho são ignoradas. Colunas de fórmula (STATUS, VALOR LIQUIDO…) são opcionais: se vierem, o app compara com o recálculo. A data de referência faz o papel da célula HOJE da planilha nos status de atraso e prazo de recurso.</p>
+  </div>
+</section>
+
+{% if carga %}
+{% set rel = carga.relatorio %}
+<section class="rp-bloco rp-bloco--inteira">
+  <header class="rp-bloco__head">
+    <span class="rp-bloco__icone"><i data-lucide="file-check-2"></i></span>
+    <h2>Carga #{{ carga.id }} · {{ carga.arquivo }}</h2>
+    {% if carga.ativa %}{{ rp.badge('ativa', 'success') }}{% else %}
+    <form method="post" action="/conciliacao/cargas/{{ carga.id }}/ativar"><button class="rp-btn rp-btn--ghost" type="submit">Tornar ativa</button></form>
+    {% endif %}
+  </header>
+  <div class="rp-bloco__corpo">
+    {{ rp.kpis([
+      {'rotulo': 'Linhas', 'valor': carga.linhas, 'formato': 'int', 'icone': 'rows-3', 'tom': 'blue', 'hint': 'lidas ' ~ rel.linhas_lidas},
+      {'rotulo': 'Rejeitadas', 'valor': carga.rejeitadas, 'formato': 'int', 'icone': 'circle-x', 'tom': 'coral', 'hint': 'com erro de conversão ou campo obrigatório'},
+      {'rotulo': 'Glosa', 'valor': rel.totais.glosa, 'formato': 'moeda_curta', 'icone': 'shield-x', 'tom': 'violet', 'hint': 'faturado ' ~ (rel.totais.valor_faturado | moeda_curta)},
+      {'rotulo': 'Convênio fórmula manual', 'valor': rel.convenio_formula_manual, 'formato': 'int', 'icone': 'pencil', 'tom': 'amber', 'hint': 'linhas em que o valor digitado difere do de-para'},
+    ]) }}
+    <dl class="rp-kv">
+      <dt>Enviada em</dt><dd>{{ carga.criada_em | fmt }}{% if carga.autor %} por {{ carga.autor }}{% endif %}</dd>
+      <dt>Data de referência</dt><dd>{{ carga.data_referencia | fmt }}</dd>
+      <dt>Competências</dt><dd>{% if rel.competencias %}{{ rel.competencias[0][:7] }} a {{ rel.competencias[-1][:7] }} ({{ rel.competencias | length }}){% else %}—{% endif %}</dd>
+      <dt>Cruzamento com o ERP</dt><dd>{% if carga.cruzada_em %}{{ carga.cruzada_em | fmt }} · {% for s, n in carga.cruzamento.por_situacao.items() %}{{ s | lower }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}não rodou{% endif %}</dd>
+      <dt>Colunas de fórmula recebidas</dt><dd>{{ rel.colunas_calculadas_recebidas | join(', ') or 'nenhuma — sem comparação com a planilha' }}</dd>
+      {% if rel.colunas_desconhecidas %}<dt>Colunas ignoradas</dt><dd>{{ rel.colunas_desconhecidas | join(', ') }}</dd>{% endif %}
+    </dl>
+
+    {% if rel.comparacao %}
+    <h3 class="rp-subtitulo">O que mudou desde a carga #{{ rel.comparacao.carga_anterior }}</h3>
+    <div class="rp-destaques">
+      <span><b>{{ rel.comparacao.novas }}</b> linhas novas</span>
+      <span><b>{{ rel.comparacao.removidas }}</b> removidas</span>
+      <span><b>{{ rel.comparacao.valores_alterados }}</b> com valor de glosa/recurso alterado</span>
+    </div>
+    {% if rel.comparacao.status_alterado %}
+    <table class="rp-tabela rp-tabela--compacta">
+      <thead><tr><th>Status da glosa antes</th><th>Agora</th><th class="num">Linhas</th></tr></thead>
+      <tbody>{% for m in rel.comparacao.status_alterado %}<tr><td>{{ m.de }}</td><td>{{ m.para }}</td><td class="num">{{ m.linhas }}</td></tr>{% endfor %}</tbody>
+    </table>
+    {% endif %}
+    {% endif %}
+
+    <h3 class="rp-subtitulo">Recálculo × planilha</h3>
+    {% if rel.divergencias %}
+    <table class="rp-tabela rp-tabela--compacta">
+      <thead><tr><th>Coluna</th><th class="num">Linhas</th><th>Motivo provável</th><th>Exemplos (linha: app × planilha)</th></tr></thead>
+      <tbody>
+        {% for d in rel.divergencias %}
+        <tr>
+          <td class="mono">{{ d.campo }}</td><td class="num">{{ d.linhas }}</td><td>{{ d.explicacao }}</td>
+          <td class="rp-sub">{% for e in d.exemplos[:3] %}{{ e.linha }}: {{ e.app if e.app is not none else '—' }} × {{ e.planilha if e.planilha is not none else '—' }}{% if not loop.last %} · {% endif %}{% endfor %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% elif rel.colunas_calculadas_recebidas %}
+    <p class="rp-sub">O recálculo bateu com todas as colunas de fórmula da planilha.</p>
+    {% endif %}
+
+    {% if rel.pendencias %}
+    <h3 class="rp-subtitulo">Premissas faltando</h3>
+    <table class="rp-tabela rp-tabela--compacta">
+      <thead><tr><th>Pendência</th><th class="num">Linhas</th><th>Convênios</th></tr></thead>
+      <tbody>{% for p in rel.pendencias %}<tr><td>{{ p.pendencia }}</td><td class="num">{{ p.linhas }}</td><td class="rp-sub">{{ p.convenios | join(', ') }}</td></tr>{% endfor %}</tbody>
+    </table>
+    {% endif %}
+
+    {% if rel.classificacoes %}
+    <details class="rp-numeros">
+      <summary>Classificações normalizadas ({{ rel.classificacoes | length }} grafias)</summary>
+      <table class="rp-tabela rp-tabela--compacta">
+        <thead><tr><th>Na planilha</th><th>Canônica</th><th class="num">Linhas</th></tr></thead>
+        <tbody>{% for c in rel.classificacoes %}<tr><td class="mono">"{{ c.bruta }}"</td><td>{{ c.canonica }}</td><td class="num">{{ c.linhas }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </details>
+    {% endif %}
+
+    {% if rel.rejeitadas_amostra %}
+    <details class="rp-numeros" open>
+      <summary>Linhas rejeitadas ({{ rel.rejeitadas }})</summary>
+      <table class="rp-tabela rp-tabela--compacta">
+        <thead><tr><th class="num">Linha</th><th>Empresa / convênio</th><th>Erros</th></tr></thead>
+        <tbody>{% for r in rel.rejeitadas_amostra[:100] %}<tr><td class="num">{{ r.linha }}</td><td>{{ r.empresa or '' }} {{ r.convenio or '' }}</td><td class="rp-sub">{{ (r.erros or []) | join('; ') }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </details>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% if lista %}
+<section class="rp-bloco rp-bloco--inteira">
+  <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="history"></i></span><h2>Histórico de cargas</h2></header>
+  <div class="rp-bloco__corpo rp-tabela-wrap">
+    <table class="rp-tabela rp-lista-cargas">
+      <thead><tr><th>#</th><th>Arquivo</th><th>Enviada</th><th>Referência</th><th class="num">Linhas</th><th class="num">Rejeitadas</th><th class="num">Glosa</th><th>ERP</th><th></th></tr></thead>
+      <tbody>
+        {% for c in lista %}
+        <tr{% if c.ativa %} class="ativa"{% endif %}>
+          <td><a href="/conciliacao/cargas?id={{ c.id }}">#{{ c.id }}</a></td>
+          <td>{{ c.arquivo }}{% if c.ativa %} {{ rp.badge('ativa', 'success') }}{% endif %}</td>
+          <td>{{ c.criada_em | fmt }}<div class="rp-sub">{{ c.autor or '' }}</div></td>
+          <td>{{ c.data_referencia | fmt }}</td>
+          <td class="num">{{ c.linhas | valor('int') }}</td>
+          <td class="num">{{ c.rejeitadas | valor('int') }}</td>
+          <td class="num">{{ (c.totais.glosa if c.totais else none) | moeda_curta }}</td>
+          <td>{{ 'cruzada' if c.cruzada_em else '—' }}</td>
+          <td><a href="/conciliacao/cargas?id={{ c.id }}">relatório</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

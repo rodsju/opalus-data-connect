@@ -32,6 +32,40 @@ SSO_URL = SSO_POR_AMBIENTE.get(AMBIENTE, SSO_POR_AMBIENTE["hml"])
 
 MENU = [
     {
+        "titulo": "Reports",
+        "itens": [
+            {"href": "/reports/faturamento", "icone": "receipt", "rotulo": "Faturamento"},
+            {"href": "/reports/glosa-planilha", "icone": "sheet", "rotulo": "Glosa (xml/planilha)"},
+            {"href": "/reports/glosa-motivos", "icone": "tags", "rotulo": "Motivos de glosa"},
+            {"href": "/reports/glosa-iw", "icone": "shield-x", "rotulo": "Glosa IW"},
+            {"href": "/reports/orcamentos", "icone": "clipboard-list", "rotulo": "Orçamentos"},
+            {"href": "/reports/ocupacao", "icone": "bed", "rotulo": "Ocupação"},
+            {"href": "/reports/auditoria", "icone": "scale", "rotulo": "Auditoria de contas"},
+            {"href": "/reports/blocos", "icone": "layout-grid", "rotulo": "Blocos de relatório"},
+        ],
+    },
+    {
+        "titulo": "Consultas",
+        "itens": [
+            {"href": "/consultas/faturas", "icone": "receipt", "rotulo": "Faturas"},
+            {"href": "/consultas/conta-paciente", "icone": "file-stack", "rotulo": "Conta do paciente"},
+            {"href": "/consultas/glosas", "icone": "list-x", "rotulo": "Glosas"},
+            {"href": "/consultas/pre-auditoria", "icone": "scan-search", "rotulo": "Pré-auditoria"},
+            {"href": "/consultas/orcamentos", "icone": "clipboard-check", "rotulo": "Orçamentos"},
+            {"href": "/consultas/pacientes", "icone": "bed", "rotulo": "Pacientes em atendimento"},
+        ],
+    },
+    {
+        "titulo": "Conciliação",
+        "itens": [
+            {"href": "/conciliacao/tiss", "icone": "file-code-2", "rotulo": "Retornos TISS (xml)"},
+            {"href": "/conciliacao/cargas", "icone": "upload", "rotulo": "Cargas (planilha)"},
+            {"href": "/conciliacao/glosa-erp", "icone": "git-compare-arrows", "rotulo": "Qualidade do cruzamento"},
+            {"href": "/conciliacao/premissas", "icone": "sliders-horizontal", "rotulo": "Premissas"},
+            {"href": "/conciliacao/regras", "icone": "function-square", "rotulo": "Regras da planilha"},
+        ],
+    },
+    {
         "titulo": "Oracle",
         "itens": [
             {"href": "/oracle", "icone": "gauge", "rotulo": "Visão geral"},
@@ -123,6 +157,25 @@ def fmt_moeda_curta(valor):
     return fmt_moeda(valor)
 
 
+def fmt_pct(valor, casas=1):
+    if valor is None:
+        return "—"
+    return f"{float(valor):,.{casas}f}".replace(",", "_").replace(".", ",").replace("_", ".") + "%"
+
+
+def fmt_valor(valor, formato):
+    """Formata pelo nome usado nos cards dos /reports (moeda_curta, pct, int...)."""
+    if formato == "moeda_curta":
+        return fmt_moeda_curta(valor)
+    if formato == "moeda":
+        return fmt_moeda(valor)
+    if formato == "pct":
+        return fmt_pct(valor)
+    if formato == "int":
+        return fmt(None if valor is None else int(round(float(valor))))
+    return fmt(valor)
+
+
 # --------------------------------------------------------------------------
 # Paginacao (compartilhada pelas listagens)
 # --------------------------------------------------------------------------
@@ -167,6 +220,8 @@ env = jinja2.Environment(
 env.filters["fmt"] = fmt
 env.filters["moeda"] = fmt_moeda
 env.filters["moeda_curta"] = fmt_moeda_curta
+env.filters["pct"] = fmt_pct
+env.filters["valor"] = fmt_valor
 
 env.globals.update(
     ambiente=AMBIENTE,

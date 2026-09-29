@@ -1,0 +1,59 @@
+{# Peças visuais dos /reports. Valores chegam crus; a formatação é daqui. #}
+
+{# cards: [{rotulo, valor, formato, hint, icone, tom, barra}] #}
+{% macro kpis(cards) %}
+<div class="rp-kpis">
+  {% for c in cards %}
+  <div class="rp-kpi rp-kpi--{{ c.tom or 'blue' }}">
+    <div class="rp-kpi__topo">
+      <span class="rp-kpi__rotulo">{{ c.rotulo }}</span>
+      <span class="rp-kpi__icone"><i data-lucide="{{ c.icone or 'circle' }}"></i></span>
+    </div>
+    <div class="rp-kpi__valor" title="{{ c.valor | valor('moeda' if c.formato == 'moeda_curta' else c.formato) }}">{{ c.valor | valor(c.formato) }}</div>
+    {% if c.barra is not none and c.barra is defined %}
+    <div class="rp-kpi__barra"><span style="width: {{ [c.barra, 100] | min | round(1) }}%"></span></div>
+    {% endif %}
+    {% if c.hint %}<div class="rp-kpi__hint">{% if c.barra is not none and c.barra is defined %}<b>{{ c.barra | pct }}</b> · {% endif %}{{ c.hint }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{# Canvas + dados inline; static/js/reports.js desenha. Sem JS, a tabela do bloco fica. #}
+{% macro grafico(id, g, altura=280) %}
+<div class="rp-graf" style="height: {{ altura }}px">
+  <canvas id="g-{{ id }}" data-grafico="d-{{ id }}" aria-label="Gráfico"></canvas>
+</div>
+<script type="application/json" id="d-{{ id }}">{{ g | tojson }}</script>
+{% endmacro %}
+
+{# Barra de participação dentro da célula #}
+{% macro share(valor, tom='blue') %}
+<td class="num rp-share rp-share--{{ tom }}">
+  <span class="rp-share__trilho"><span style="width: {{ [valor or 0, 100] | min | round(1) }}%"></span></span>
+  <span class="rp-share__num">{{ valor | pct }}</span>
+</td>
+{% endmacro %}
+
+{% macro badge(texto, tom='neutral') %}<span class="rp-badge rp-badge--{{ tom }}">{{ texto }}</span>{% endmacro %}
+
+{# Código do paciente e de onde ele vem: 'P' + GLBPATIENT.ID (ERP) ou 'X' + hash (planilha sem ERP) #}
+{% macro codigo_paciente(codigo) -%}
+{%- if codigo -%}<span class="mono" title="{{ 'P + ID do paciente no Oracle (GLBPATIENT.ID)' if codigo.startswith('P') else 'Pseudônimo: linha da planilha que não casou com o ERP' }}">{{ codigo }}</span><div class="rp-sub">{{ 'ERP' if codigo.startswith('P') else 'planilha' }}</div>{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{# Nome mascarado; o clique busca o nome (app.js -> /pacientes/nome) #}
+{% macro nome_paciente(codigo) -%}
+{%- if codigo -%}<button type="button" class="pac__nome" data-paciente="{{ codigo }}" title="Clique para ver o nome">*****</button>{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{# Comentário do auditor: texto livre, pode citar o paciente -- só no clique (app.js) #}
+{% macro comentario_oculto(id_item) -%}
+{%- if id_item -%}<button type="button" class="pac__nome" data-revelar="/consultas/pre-auditoria/comentario?item={{ id_item }}" data-mascara="ver comentário" title="Clique para ver o comentário">ver comentário</button>{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{% macro legenda(itens) %}
+<div class="rp-legenda">
+  {% for rotulo, tom in itens %}<span><i class="rp-dot rp-dot--{{ tom }}"></i>{{ rotulo }}</span>{% endfor %}
+</div>
+{% endmacro %}

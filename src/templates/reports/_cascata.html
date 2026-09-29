@@ -1,0 +1,20 @@
+{# Cascata: gráfico + tabela dos passos. Espera `cascata` (comum.cascata) e `id`. #}
+{% import "reports/_macros.html" as rp %}
+<div class="rp-legenda" style="margin-bottom: 8px"><span><i class="rp-dot rp-dot--blue"></i>total</span><span><i class="rp-dot rp-dot--coral"></i>perda / dedução</span><span><i class="rp-dot rp-dot--teal"></i>entrou no caixa</span><span>cada barra parte do total acumulado</span></div>
+<div class="rp-duo">
+  <div class="rp-duo__graf">{{ rp.grafico(id, cascata.grafico, 320) }}</div>
+  <div class="rp-duo__tab">
+    <table class="rp-tabela rp-tabela--compacta rp-cascata">
+      <thead><tr><th>Passo</th><th class="num">Valor</th><th class="num">% do topo</th></tr></thead>
+      <tbody>
+        {% for p in cascata.passos %}
+        <tr class="rp-cascata--{{ p.tipo }}">
+          <td>{% if p.tipo in ('neg', 'saida') %}<span class="rp-cascata__sinal">−</span>{% elif p.tipo == 'pos' %}<span class="rp-cascata__sinal">+</span>{% else %}<span class="rp-cascata__sinal">=</span>{% endif %}<b>{{ p.rotulo }}</b><div class="rp-sub">{{ p.descricao }}</div></td>
+          <td class="num">{{ p.valor | moeda_curta }}</td>
+          <td class="num">{{ p.pct | pct }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

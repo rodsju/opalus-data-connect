@@ -66,4 +66,32 @@
   --gradient-blue: linear-gradient(160deg,#004e84 0%,#233751 100%); /* @kind other */
   --gradient-teal: linear-gradient(135deg,#00afb9 0%,#009597 100%); /* @kind other */
   --gradient-mist: linear-gradient(180deg,#f4f7fb 0%,#e5ecf5 100%); /* @kind other */
+
+  /* Vivid — paleta de dados e relatórios (não é do manual). Cores saturadas para
+     gráficos, KPIs e destaques em /reports; a interface continua institucional.
+     Os gradientes do símbolo acima não mudam. */
+  --vivid-blue:#1463f3;
+  --vivid-blue-soft:#e3edfe;
+  --vivid-cyan:#00b4d8;
+  --vivid-cyan-soft:#dcf6fb;
+  --vivid-teal:#00c2a8;
+  --vivid-teal-soft:#d9f7f2;
+  --vivid-violet:#7b3fe4;
+  --vivid-violet-soft:#efe7fd;
+  --vivid-magenta:#d63384;
+  --vivid-magenta-soft:#fbe4ef;
+  --vivid-coral:#f2545b;
+  --vivid-coral-soft:#fde6e7;
+  --vivid-amber:#f5a524;
+  --vivid-amber-soft:#fef1dc;
+  --vivid-green:#1db954;
+  --vivid-green-soft:#ddf6e6;
+
+  --gradient-report: linear-gradient(120deg,#101b28 0%,#1a2a3e 30%,#004e84 68%,#00b4d8 100%); /* @kind other */
+  --gradient-kpi-blue: linear-gradient(135deg,#3b82ff 0%,#1463f3 100%); /* @kind other */
+  --gradient-kpi-teal: linear-gradient(135deg,#2ee6c5 0%,#00a08b 100%); /* @kind other */
+  --gradient-kpi-violet: linear-gradient(135deg,#a070ff 0%,#6a2fd6 100%); /* @kind other */
+  --gradient-kpi-coral: linear-gradient(135deg,#ff7d6b 0%,#e23d4f 100%); /* @kind other */
+  --gradient-kpi-amber: linear-gradient(135deg,#ffc55c 0%,#ee8f10 100%); /* @kind other */
+  --gradient-kpi-magenta: linear-gradient(135deg,#f45ea8 0%,#c21f6f 100%); /* @kind other */
 }
