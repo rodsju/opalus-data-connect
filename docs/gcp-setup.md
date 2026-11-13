@@ -1,4 +1,4 @@
-# Setup no GCP — atlas-data-connect
+# Setup no GCP — atlas-connect
 
 O que precisa existir no GCP antes do primeiro deploy, e o que se faz uma vez
 depois dele. O workflow (`.github/workflows/deploy-{hml,prd}.yaml`) só builda,
@@ -12,9 +12,11 @@ VPC `atlas-vpc` e `atlas-services-subnet`, repositório `atlas-ar-apps`, pool e
 provider de Workload Identity e a SA de deploy `atlas-github-deploy` com seus
 papéis. Confira tudo isso antes de começar (passo 0).
 
+Em hml o app também alcança o **Oracle do IW pela VPN** do projeto (seção 8).
+
 Este app é **dono de duas coisas que o `opalus-atlas-dash-app` também usa**:
 
-- o database `atlas-data-connect`, onde fica `catalogo.provedor_ia` (o dash lê só essa tabela);
+- o database `atlas-connect`, onde fica `catalogo.provedor_ia` (o dash lê só essa tabela);
 - o secret `ia-senha-mestra`, que cifra as chaves dos provedores. Os dois apps precisam da mesma senha.
 
 Por isso este setup vem **antes** do setup do dash.
@@ -27,10 +29,10 @@ export REGION=us-central1
 # export PROJECT=atlas-dw-prd-511718
 # export REGION=southamerica-east1
 
-export SERVICE=atlas-data-connect
+export SERVICE=atlas-connect
 export INSTANCE=atlas-pg
-export DB=atlas-data-connect
-export SA_NAME=atlas-app-data-connect
+export DB=atlas-connect
+export SA_NAME=atlas-app-connect
 export SA=${SA_NAME}@${PROJECT}.iam.gserviceaccount.com
 # o usuario IAM no Postgres e o e-mail da SA sem ".gserviceaccount.com"
 export DB_USER=${SA_NAME}@${PROJECT}.iam
@@ -75,9 +77,12 @@ gcloud services enable secretmanager.googleapis.com sqladmin.googleapis.com \
 > `--format=none`: sem ele, cada `add-iam-policy-binding` imprime a política
 > inteira do projeto. O comando só acrescenta o papel.
 
+Em hml a SA `atlas-app-connect` **já existe**, sem papéis, e foi a usada no teste de
+conexão com o Oracle. Pule o `create` e siga com os papéis.
+
 ```bash
 gcloud iam service-accounts create $SA_NAME --project=$PROJECT \
-  --display-name="Cloud Run atlas-data-connect"
+  --display-name="Cloud Run atlas-connect"
 until gcloud iam service-accounts describe $SA --project=$PROJECT >/dev/null 2>&1; do sleep 5; done
 sleep 30
 
@@ -144,7 +149,7 @@ gcloud sql users create $DB_USER --instance=$INSTANCE --project=$PROJECT \
 schema `catalogo`**, como no banco local: o dump usa o tipo `catalogo.vector`, e
 importar com as extensões em `public` falha com `type "catalogo.vector" does not
 exist`. Abra o **Cloud SQL Studio** (console → SQL → `atlas-pg` → Cloud SQL Studio)
-como `postgres`, **no database `atlas-data-connect`**:
+como `postgres`, **no database `atlas-connect`**:
 
 ```sql
 CREATE SCHEMA catalogo;
@@ -157,9 +162,9 @@ Se não souber a senha do `postgres`: `gcloud sql users set-password postgres
 
 ### 5.3 Importar o catálogo local
 
-O catálogo é gerado **localmente** pelo `scripts/mapear_oracle.py`, porque o Oracle
-só é alcançável pela VPN. O Cloud Run não tem rota até ele (veja a seção Limitações).
-Ele tem cerca de 1 GB por causa das amostras e dos vetores, então a importação vai pelo
+O catálogo foi gerado **localmente** pelo `scripts/mapear_oracle.py`. Importar
+evita remapear do zero: o mapeamento leva horas, e as descrições e os vetores de IA
+custam dinheiro. O catálogo tem cerca de 1 GB por causa das amostras e dos vetores, então a importação vai pelo
 Cloud Storage com `gcloud sql import`, sem precisar de IP público.
 
 O `sed` tira duas linhas do dump:
@@ -193,23 +198,23 @@ gcloud sql import sql $INSTANCE gs://$BUCKET/catalogo.sql --project=$PROJECT \
 
 A importação foi feita como `postgres`, então o schema e as tabelas pertencem a ele.
 O app grava descrições, vetores e provedores, e o `--somente-ddl` aplica `ALTER`,
-que só o dono pode rodar. No Cloud SQL Studio, no database `atlas-data-connect`,
+que só o dono pode rodar. No Cloud SQL Studio, no database `atlas-connect`,
 **troque o projeto pelo do ambiente**:
 
 ```sql
 -- CREATE SCHEMA IF NOT EXISTS (no DDL) confere este privilegio antes de ver
 -- que o schema ja existe
-GRANT CREATE ON DATABASE "atlas-data-connect" TO "atlas-app-data-connect@atlas-dw-hml-511718.iam";
+GRANT CREATE ON DATABASE "atlas-connect" TO "atlas-app-connect@atlas-dw-hml-511718.iam";
 -- O codigo chama pgp_sym_decrypt e usa o tipo vector sem o schema na frente.
 -- No local isso resolve porque o usuario se chama "catalogo" e o search_path
 -- padrao e "$user"; o usuario IAM tem outro nome.
-ALTER ROLE "atlas-app-data-connect@atlas-dw-hml-511718.iam" IN DATABASE "atlas-data-connect"
+ALTER ROLE "atlas-app-connect@atlas-dw-hml-511718.iam" IN DATABASE "atlas-connect"
   SET search_path = catalogo, public;
-GRANT "atlas-app-data-connect@atlas-dw-hml-511718.iam" TO postgres;
+GRANT "atlas-app-connect@atlas-dw-hml-511718.iam" TO postgres;
 
 DO $$
 DECLARE
-  dono text := 'atlas-app-data-connect@atlas-dw-hml-511718.iam';
+  dono text := 'atlas-app-connect@atlas-dw-hml-511718.iam';
   r record;
 BEGIN
   EXECUTE format('ALTER SCHEMA catalogo OWNER TO %I', dono);
@@ -254,10 +259,13 @@ export URL=$(gcloud run services describe $SERVICE --project=$PROJECT --region=$
 |---|---|
 | `could not translate host name` | zona `atlas.internal.` ligada à `atlas-vpc` (passo 3.3 do control) |
 | `connection timeout` | `VPC_NETWORK`/`VPC_SUBNET` e o endpoint PSC `ACCEPTED` |
-| `password authentication failed` / `IAM authentication failed` | `cloudsql.iam_authentication`, `roles/cloudsql.instanceUser` e o usuário na URI (`atlas-app-data-connect%40<projeto>.iam`) |
+| `password authentication failed` / `IAM authentication failed` | `cloudsql.iam_authentication`, `roles/cloudsql.instanceUser` e o usuário na URI (`atlas-app-connect%40<projeto>.iam`) |
 | `permission denied for schema catalogo` | o passo 5.4 |
 | `Senha mestra não configurada` | o secret do passo 3 e o `secretAccessor` |
 | `Não conseguimos decifrar a chave` | o secret tem uma senha diferente da que cifrou os provedores importados |
+| `/health`: Oracle com `DPY-6005` / timeout | `VPC_SUBNET` precisa ser a `atlas-psc-subnet` (seção 8) e o túnel precisa estar `ESTABLISHED` |
+| `/health`: Oracle com `ORA-01017` | o secret `atlas-iw-oracle-ds-iw-password` e o `ORACLE_USER` (`DS_IW`) |
+| `/health`: Oracle com `DPY-3001` / erro de criptografia nativa | o NNE virou obrigatório no Oracle (seção 8) |
 
 ## 7. Load balancer
 
@@ -267,9 +275,9 @@ O DNS `*.atlas-hml.saudeopalus.com` e o certificado wildcard já existem.
 ```bash
 export HOST=connect.atlas-hml.saudeopalus.com   # prd: CONFERIR
 export URL_MAP=atlas-lb-https
-export NEG=atlas-neg-data-connect
-export BACKEND=atlas-bs-data-connect
-export PATH_MATCHER=pm-data-connect
+export NEG=atlas-neg-connect
+export BACKEND=atlas-bs-connect
+export PATH_MATCHER=pm-connect
 
 gcloud compute url-maps export $URL_MAP --project=$PROJECT --global --destination=url-map-antes.yaml
 
@@ -291,18 +299,67 @@ autorizaria qualquer request como aquele e-mail.
 
 Se o `atlas-auth-lb` estiver checando rotas pelo snapshot do `atlas-control`
 (`PERMISSIONS_URL` ligado), cadastre a app lá antes de abrir o host. Use o slug
-`atlas-data-connect` com a URL `https://$HOST`, as rotas do `layout.MENU` mais
+`atlas-connect` com a URL `https://$HOST`, as rotas do `layout.MENU` mais
 `/static/*`, `/ds-static/*` e `/logout`, e um perfil para quem usa. Sem esse cadastro,
 ninguém entra.
 
+## 8. Oracle pela VPN (hml)
+
+O projeto de hml tem uma VPN clássica até o Fortinet da Opalus. Ela é mantida pelo
+Terraform da fundação, e **nada aqui a altera**:
+
+| Recurso | O que é |
+|---|---|
+| `atlas-iw-tunnel-0` (`atlas-vpn-gw`, `us-central1`) | IKEv2 até `4.228.200.96`. Seletores: local `10.40.1.0/24`, remoto `192.168.30.0/24` |
+| rota `atlas-iw-route-0` | `192.168.30.0/24` da `atlas-vpc` pelo túnel |
+| Datastream `atlas-iw-opalus` | lê o mesmo Oracle (`192.168.30.4:1521/IWTST`, usuário `DS_IW`) e alimenta o `bronze_iw_opalus` do dash |
+
+**Por que a `atlas-psc-subnet`.** Como a VPN é por política, só passa tráfego com
+origem na faixa do seletor local, `10.40.1.0/24`, que é a `atlas-psc-subnet`. Saindo
+pela `atlas-services-subnet` (`10.40.4.0/22`), a rota leva o pacote até o túnel, mas
+ele não passa. Por isso o `deploy-hml.yaml` usa `VPC_SUBNET=atlas-psc-subnet`. O
+endpoint PSC do Cloud SQL fica na mesma subnet, então o Postgres continua alcançável.
+
+**Testado:** com a SA `atlas-app-connect` saindo pela `atlas-psc-subnet`, a porta 1521
+abriu e o login no Oracle 19.25 funcionou, em **modo thin** do `python-oracledb`, que
+é o modo do app.
+
+**Usuário Oracle: `DS_IW`, o mesmo do Datastream.** A senha vem do secret que já
+existe para o Datastream, sem cópia:
+
+```bash
+gcloud secrets add-iam-policy-binding atlas-iw-oracle-ds-iw-password --project=$PROJECT \
+  --member=serviceAccount:$SA --role=roles/secretmanager.secretAccessor --format=none
+```
+
+Compartilhar o usuário tem custo: se a senha do `DS_IW` for trocada, troque também a
+versão do secret, e os **dois** (Datastream e app) passam a usá-la. Se a conta for
+bloqueada por tentativas erradas do app, **a replicação para junto**. Se isso
+incomodar, peça ao DBA um usuário próprio, só de leitura, e troque `ORACLE_USER` e o
+secret no workflow.
+
+**O que roda pela VPN.** No web app, o Oracle ao vivo só aparece no `/health` (check
+"Origem (Oracle)"). As páginas leem o catálogo do Postgres. O mapeador
+(`scripts/mapear_oracle.py`, `make catalogo`) é um script de linha de comando e
+nenhuma rota o dispara. Para rodá-lo na nuvem, o próximo passo é um Cloud Run Job
+com a mesma imagem, VPC e secrets. Até lá, ele roda local e a nuvem recebe o
+resultado pelo passo 5.3.
+
+**Criptografia nativa (NNE).** O modo thin só fala com o Oracle enquanto a
+criptografia nativa (`SQLNET.ENCRYPTION_SERVER`) **não for obrigatória** (`REQUIRED`).
+Se o DBA ligar o NNE como obrigatório, o app passa a falhar no login. Há duas saídas:
+
+- **Modo thick:** Instant Client na imagem e `ORACLE_CLIENT_LIB_DIR` apontando para
+  ele. O Instant Client precisa de glibc, então a base da imagem sai do Alpine
+  (`python:3.11-alpine`) para uma Debian slim.
+- **TCPS:** TLS no listener do Oracle, configurado do lado do DBA. O thin continua
+  funcionando e a criptografia passa a ser a do TLS.
+
+**prd.** O projeto de prd não tem VPN para o IW, nem a API do Compute ligada. O
+`deploy-prd.yaml` sobe sem `ORACLE_*` e pela `atlas-services-subnet`.
+
 ## Limitações
 
-- **Oracle fora de alcance.** O Cloud Run não tem rota até o Oracle (`192.168.30.4`
-  só pela VPN). O `/health` mostra as origens Oracle como "Sem configuração",
-  porque nenhum `ORACLE_*` vai no deploy. As páginas leem o catálogo no
-  Postgres e funcionam. O mapeamento (`make catalogo`, `make amostras`) continua
-  **local**, e a nuvem recebe o resultado pelo passo 5.3. Para mapear direto da nuvem,
-  seria preciso uma rota da `atlas-vpc` até a rede do Oracle (VPN ou interconnect). CONFERIR.
 - **Lote de descrições.** O lote roda num subprocesso dentro da instância
   (`src/lote.py`). O workflow usa `--no-cpu-throttling` e `--max=1`, mas, com
   `--min-instances=0`, uma instância ociosa pode ser desligada no meio de um lote longo.
@@ -312,12 +369,13 @@ ninguém entra.
 
 | Variável no workflow | Valor |
 |---|---|
-| `SERVICE_NAME` | `atlas-data-connect` |
-| `RUNTIME_SERVICE_ACCOUNT` | `atlas-app-data-connect@<projeto>.iam.gserviceaccount.com` |
-| `POSTGRES_DSN` | `postgresql://atlas-app-data-connect%40<projeto>.iam@atlas-pg.atlas.internal:5432/atlas-data-connect?sslmode=require` |
+| `SERVICE_NAME` | `atlas-connect` |
+| `RUNTIME_SERVICE_ACCOUNT` | `atlas-app-connect@<projeto>.iam.gserviceaccount.com` |
+| `POSTGRES_DSN` | `postgresql://atlas-app-connect%40<projeto>.iam@atlas-pg.atlas.internal:5432/atlas-connect?sslmode=require` |
 | em `--set-env-vars` | `DB_IAM_AUTH=true` (o token da SA vai como senha, `src/catalogo.py`) |
-| em `--set-secrets` | `IA_SENHA_MESTRA=ia-senha-mestra:latest` (passo 3) |
-| `VPC_NETWORK` / `VPC_SUBNET` | `atlas-vpc` / `atlas-services-subnet` |
-| `IMAGE` | `<região>-docker.pkg.dev/<projeto>/atlas-ar-apps/atlas-data-connect` |
+| em `--set-secrets` | `IA_SENHA_MESTRA=ia-senha-mestra:latest` (passo 3); em hml também `ORACLE_PASSWORD=atlas-iw-oracle-ds-iw-password:latest` (seção 8) |
+| `ORACLE_*` (só hml) | `192.168.30.4` / `1521` / `IWTST` / schema `DBIWGERIATRICS` / usuário `DS_IW` |
+| `VPC_NETWORK` / `VPC_SUBNET` | `atlas-vpc` / hml: `atlas-psc-subnet` (seletor da VPN, seção 8); prd: `atlas-services-subnet` |
+| `IMAGE` | `<região>-docker.pkg.dev/<projeto>/atlas-ar-apps/atlas-connect` |
 | secrets (hml) | `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT` (passo 4) |
 | secrets (prd) | os mesmos com `_PRD` |

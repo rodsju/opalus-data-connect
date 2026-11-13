@@ -1,4 +1,4 @@
-name: Deploy atlas-data-connect (prd)
+name: Deploy atlas-connect (prd)
 
 on:
   push:
@@ -9,17 +9,20 @@ on:
 env:
   PROJECT_ID: atlas-dw-prd-511718
   REGION: southamerica-east1
-  SERVICE_NAME: atlas-data-connect
-  RUNTIME_SERVICE_ACCOUNT: atlas-app-data-connect@atlas-dw-prd-511718.iam.gserviceaccount.com
-  IMAGE: southamerica-east1-docker.pkg.dev/atlas-dw-prd-511718/atlas-ar-apps/atlas-data-connect
+  SERVICE_NAME: atlas-connect
+  RUNTIME_SERVICE_ACCOUNT: atlas-app-connect@atlas-dw-prd-511718.iam.gserviceaccount.com
+  IMAGE: southamerica-east1-docker.pkg.dev/atlas-dw-prd-511718/atlas-ar-apps/atlas-connect
   # O servico sai pela VPC (Direct VPC egress) para alcancar o endpoint PSC do
   # Cloud SQL atlas-pg (docs/gcp-setup.md)
   VPC_NETWORK: atlas-vpc
   VPC_SUBNET: atlas-services-subnet
-  # Database atlas-data-connect na atlas-pg: catalogo do Oracle e o cadastro de
+  # SEM Oracle em prd por enquanto: nao ha VPN para o IW no projeto de prd. Quando
+  # houver, repetir o que o deploy-hml.yaml faz -- VPC_SUBNET na faixa aceita pelo
+  # tunel, ORACLE_* aqui e ORACLE_PASSWORD no --set-secrets.
+  # Database atlas-connect na atlas-pg: catalogo do Oracle e o cadastro de
   # AI Providers (lido tambem pelo opalus-atlas-dash-app). Login IAM da SA de
   # runtime, sem senha (DB_IAM_AUTH, src/catalogo.py). O @ do usuario vai como %40.
-  POSTGRES_DSN: postgresql://atlas-app-data-connect%40atlas-dw-prd-511718.iam@atlas-pg.atlas.internal:5432/atlas-data-connect?sslmode=require
+  POSTGRES_DSN: postgresql://atlas-app-connect%40atlas-dw-prd-511718.iam@atlas-pg.atlas.internal:5432/atlas-connect?sslmode=require
 
 jobs:
   deploy:

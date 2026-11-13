@@ -1,4 +1,4 @@
-name: Deploy atlas-data-connect (hml)
+name: Deploy atlas-connect (hml)
 
 on:
   push:
@@ -9,17 +9,26 @@ on:
 env:
   PROJECT_ID: atlas-dw-hml-511718
   REGION: us-central1
-  SERVICE_NAME: atlas-data-connect
-  RUNTIME_SERVICE_ACCOUNT: atlas-app-data-connect@atlas-dw-hml-511718.iam.gserviceaccount.com
-  IMAGE: us-central1-docker.pkg.dev/atlas-dw-hml-511718/atlas-ar-apps/atlas-data-connect
+  SERVICE_NAME: atlas-connect
+  RUNTIME_SERVICE_ACCOUNT: atlas-app-connect@atlas-dw-hml-511718.iam.gserviceaccount.com
+  IMAGE: us-central1-docker.pkg.dev/atlas-dw-hml-511718/atlas-ar-apps/atlas-connect
   # O servico sai pela VPC (Direct VPC egress) para alcancar o endpoint PSC do
-  # Cloud SQL atlas-pg (docs/gcp-setup.md)
+  # Cloud SQL atlas-pg e o Oracle do IW. Pela atlas-psc-subnet, e nao pela
+  # atlas-services-subnet: a VPN classica atlas-iw-tunnel-0 so aceita origem em
+  # 10.40.1.0/24 (docs/gcp-setup.md, "Oracle pela VPN").
   VPC_NETWORK: atlas-vpc
-  VPC_SUBNET: atlas-services-subnet
-  # Database atlas-data-connect na atlas-pg: catalogo do Oracle e o cadastro de
+  VPC_SUBNET: atlas-psc-subnet
+  # Oracle do IW pela VPN (o mesmo banco do Datastream atlas-cp-oracle-iw), em
+  # modo thin do python-oracledb. Usuario DS_IW, senha do secret do Datastream.
+  ORACLE_HOST: 192.168.30.4
+  ORACLE_PORT: "1521"
+  ORACLE_SERVICE: IWTST
+  ORACLE_SCHEMA: DBIWGERIATRICS
+  ORACLE_USER: DS_IW
+  # Database atlas-connect na atlas-pg: catalogo do Oracle e o cadastro de
   # AI Providers (lido tambem pelo opalus-atlas-dash-app). Login IAM da SA de
   # runtime, sem senha (DB_IAM_AUTH, src/catalogo.py). O @ do usuario vai como %40.
-  POSTGRES_DSN: postgresql://atlas-app-data-connect%40atlas-dw-hml-511718.iam@atlas-pg.atlas.internal:5432/atlas-data-connect?sslmode=require
+  POSTGRES_DSN: postgresql://atlas-app-connect%40atlas-dw-hml-511718.iam@atlas-pg.atlas.internal:5432/atlas-connect?sslmode=require
 
 jobs:
   deploy:
@@ -80,8 +89,8 @@ jobs:
             --network="${VPC_NETWORK}" \
             --subnet="${VPC_SUBNET}" \
             --vpc-egress=private-ranges-only \
-            --set-secrets="IA_SENHA_MESTRA=ia-senha-mestra:latest" \
-            --set-env-vars="PROJECT_ID=${PROJECT_ID},ENV=hml,LOG_LEVEL=INFO,DB_IAM_AUTH=true,POSTGRES_DSN=${POSTGRES_DSN}"
+            --set-secrets="IA_SENHA_MESTRA=ia-senha-mestra:latest,ORACLE_PASSWORD=atlas-iw-oracle-ds-iw-password:latest" \
+            --set-env-vars="PROJECT_ID=${PROJECT_ID},ENV=hml,LOG_LEVEL=INFO,DB_IAM_AUTH=true,POSTGRES_DSN=${POSTGRES_DSN},ORACLE_HOST=${ORACLE_HOST},ORACLE_PORT=${ORACLE_PORT},ORACLE_SERVICE=${ORACLE_SERVICE},ORACLE_SCHEMA=${ORACLE_SCHEMA},ORACLE_USER=${ORACLE_USER}"
 
       - name: Print URL
         run: |
