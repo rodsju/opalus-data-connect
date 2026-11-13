@@ -1,17 +1,25 @@
-name: Deploy vert-datalake-demo-app (hml)
+name: Deploy atlas-data-connect (hml)
 
 on:
   push:
     branches: [hml]
-    paths-ignore: ["README.md"]
+    paths-ignore: ["README.md", "docs/**"]
   workflow_dispatch:
 
 env:
-  PROJECT_ID: vert-datalake-hml-01
-  REGION: us-east1
-  SERVICE_NAME: vert-datalake-demo-app
-  RUNTIME_SERVICE_ACCOUNT: sa-cr-bq-reader@vert-datalake-hml-01.iam.gserviceaccount.com
-  IMAGE: us-east1-docker.pkg.dev/vert-datalake-hml-01/ar-datalake/vert-datalake-demo-app
+  PROJECT_ID: atlas-dw-hml-511718
+  REGION: us-central1
+  SERVICE_NAME: atlas-data-connect
+  RUNTIME_SERVICE_ACCOUNT: atlas-app-data-connect@atlas-dw-hml-511718.iam.gserviceaccount.com
+  IMAGE: us-central1-docker.pkg.dev/atlas-dw-hml-511718/atlas-ar-apps/atlas-data-connect
+  # O servico sai pela VPC (Direct VPC egress) para alcancar o endpoint PSC do
+  # Cloud SQL atlas-pg (docs/gcp-setup.md)
+  VPC_NETWORK: atlas-vpc
+  VPC_SUBNET: atlas-services-subnet
+  # Database atlas-data-connect na atlas-pg: catalogo do Oracle e o cadastro de
+  # AI Providers (lido tambem pelo opalus-atlas-dash-app). Login IAM da SA de
+  # runtime, sem senha (DB_IAM_AUTH, src/catalogo.py). O @ do usuario vai como %40.
+  POSTGRES_DSN: postgresql://atlas-app-data-connect%40atlas-dw-hml-511718.iam@atlas-pg.atlas.internal:5432/atlas-data-connect?sslmode=require
 
 jobs:
   deploy:
@@ -41,10 +49,15 @@ jobs:
         run: |
           set -euo pipefail
           IMAGE_TAG="${IMAGE}:${GITHUB_SHA}"
-          docker build -t "${IMAGE_TAG}" .
+          docker build --pull --no-cache -t "${IMAGE_TAG}" .
           docker push "${IMAGE_TAG}"
           echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
 
+      # IA_SENHA_MESTRA vem do Secret Manager (ia-senha-mestra), o MESMO secret do
+      # dash: cifra e decifra as chaves dos provedores de IA.
+      # --no-cpu-throttling nos dois ambientes: o lote de descricoes/vetores roda
+      # num subprocesso em segundo plano (src/lote.py), fora da requisicao.
+      # x-opalus-user-email NUNCA entra aqui: quem identifica o usuario e o LB.
       - name: Deploy Cloud Run
         run: |
           set -euo pipefail
@@ -53,17 +66,22 @@ jobs:
             --region="${REGION}" \
             --image="${IMAGE_TAG}" \
             --service-account="${RUNTIME_SERVICE_ACCOUNT}" \
-            --allow-unauthenticated \
-            --memory=512Mi \
+            --no-allow-unauthenticated \
+            --no-invoker-iam-check \
+            --memory=1Gi \
             --port=8080 \
             --ingress="internal-and-cloud-load-balancing" \
-            --concurrency=200 \
+            --concurrency=80 \
             --min-instances=0 \
             --max=1 \
             --timeout=3600s \
             --cpu=1 \
             --no-cpu-throttling \
-            --set-env-vars="PROJECT_ID=${PROJECT_ID},ENV=hml,LOG_LEVEL=INFO"
+            --network="${VPC_NETWORK}" \
+            --subnet="${VPC_SUBNET}" \
+            --vpc-egress=private-ranges-only \
+            --set-secrets="IA_SENHA_MESTRA=ia-senha-mestra:latest" \
+            --set-env-vars="PROJECT_ID=${PROJECT_ID},ENV=hml,LOG_LEVEL=INFO,DB_IAM_AUTH=true,POSTGRES_DSN=${POSTGRES_DSN}"
 
       - name: Print URL
         run: |

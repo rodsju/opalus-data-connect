@@ -7,12 +7,44 @@ crus -- quem decide rotulo e ordem de coluna e src/oracle.py.
 import logging
 import math
 import os
+import threading
 
 from . import layout
 
 logger = logging.getLogger(__name__)
 
 DSN = os.getenv("POSTGRES_DSN", "postgresql://catalogo:catalogo@postgres:5432/catalogo")
+
+# No GCP o usuario do banco e a propria SA de runtime (login IAM do Cloud SQL):
+# o DSN vem sem senha e a de cada conexao e um access token da SA. Mesmo
+# caminho do src/db.py do opalus-atlas-control-app. No local, a senha do DSN.
+IAM = os.getenv("DB_IAM_AUTH", "").strip().lower() in ("1", "true", "sim")
+ESCOPO_IAM = "https://www.googleapis.com/auth/sqlservice.login"
+_credenciais = None
+_trava_token = threading.Lock()
+
+
+def _token():
+    """Access token da SA, renovado quando esta para expirar."""
+    global _credenciais
+    with _trava_token:
+        if _credenciais is None:
+            import google.auth
+
+            _credenciais, _ = google.auth.default(scopes=[ESCOPO_IAM])
+        if not _credenciais.valid:
+            from google.auth.transport.requests import Request
+
+            _credenciais.refresh(Request())
+        return _credenciais.token
+
+
+def conectar(dsn=None):
+    """Conexao nova; com DB_IAM_AUTH o token da SA vai como senha."""
+    import psycopg
+
+    extras = {"password": _token()} if IAM else {}
+    return psycopg.connect(dsn or DSN, connect_timeout=5, **extras)
 
 
 class ConsultaFalhou(Exception):
@@ -25,11 +57,10 @@ class ConsultaFalhou(Exception):
 def consultar(sql, params=(), descricao="consulta"):
     """Roda o SELECT e devolve list[dict]. Conecta sob demanda, como o client do BQ:
     sem isso um Postgres fora do ar derrubaria o boot do container."""
-    import psycopg
     from psycopg.rows import dict_row
 
     try:
-        with psycopg.connect(DSN, connect_timeout=5) as conexao:
+        with conectar() as conexao:
             with conexao.cursor(row_factory=dict_row) as cursor:
                 cursor.execute(sql, params)
                 linhas = cursor.fetchall()
@@ -43,10 +74,8 @@ def consultar(sql, params=(), descricao="consulta"):
 
 def executar(sql, params=(), descricao="escrita"):
     """INSERT/UPDATE. O with da conexao ja faz commit na saida limpa."""
-    import psycopg
-
     try:
-        with psycopg.connect(DSN, connect_timeout=5) as conexao:
+        with conectar() as conexao:
             with conexao.cursor() as cursor:
                 cursor.execute(sql, params)
     except Exception as e:
