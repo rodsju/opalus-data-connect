@@ -107,54 +107,6 @@ def fmt(valor):
     return str(valor)
 
 
-def fmt_moeda(valor):
-    return "—" if valor is None else f"R$ {fmt(valor)}"
-
-
-# Valor abreviado (cards, hints, textos de risco e eixos dos gráficos). Lugar ÚNICO: o JS dos
-# gráficos lê esta mesma lista (base.html -> window.OPALUS.escalasMoeda -> reports.js).
-# casas = máximo de decimais; zero à direita cai (R$ 200 mil, R$ 14,91 MM).
-ESCALAS_MOEDA = [
-    {"corte": 1e9, "sufixo": "bi", "casas": 2},
-    {"corte": 1e6, "sufixo": "MM", "casas": 2},
-    {"corte": 1e3, "sufixo": "mil", "casas": 1},
-]
-
-
-def fmt_moeda_curta(valor):
-    # Saldo na casa dos bilhoes nao cabe no card; o valor cheio vai no hint
-    if valor is None:
-        return "—"
-    valor = float(valor)
-    for escala in ESCALAS_MOEDA:
-        if abs(valor) >= escala["corte"]:
-            numero = f"{valor / escala['corte']:,.{escala['casas']}f}"
-            if "." in numero:
-                numero = numero.rstrip("0").rstrip(".")
-            numero = numero.replace(",", "_").replace(".", ",").replace("_", ".")
-            return f"R$ {numero} {escala['sufixo']}"
-    return fmt_moeda(valor)
-
-
-def fmt_pct(valor, casas=1):
-    if valor is None:
-        return "—"
-    return f"{float(valor):,.{casas}f}".replace(",", "_").replace(".", ",").replace("_", ".") + "%"
-
-
-def fmt_valor(valor, formato):
-    """Formata pelo nome usado nos cards dos /reports (moeda_curta, pct, int...)."""
-    if formato == "moeda_curta":
-        return fmt_moeda_curta(valor)
-    if formato == "moeda":
-        return fmt_moeda(valor)
-    if formato == "pct":
-        return fmt_pct(valor)
-    if formato == "int":
-        return fmt(None if valor is None else int(round(float(valor))))
-    return fmt(valor)
-
-
 # --------------------------------------------------------------------------
 # Paginacao (compartilhada pelas listagens)
 # --------------------------------------------------------------------------
@@ -197,13 +149,8 @@ env = jinja2.Environment(
 )
 
 env.filters["fmt"] = fmt
-env.filters["moeda"] = fmt_moeda
-env.filters["moeda_curta"] = fmt_moeda_curta
-env.filters["pct"] = fmt_pct
-env.filters["valor"] = fmt_valor
 
 env.globals.update(
-    escalas_moeda=ESCALAS_MOEDA,
     ambiente=AMBIENTE,
     projeto=PROJETO,
     sso_url=SSO_URL,

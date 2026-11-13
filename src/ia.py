@@ -449,56 +449,6 @@ def _chamar_openai(prov, payload, n_colunas, instrucoes=None, modelo=None,
 
 ADAPTADORES = {"anthropic": _chamar_anthropic, "openai": _chamar_openai}
 
-# Decisions API (Jev): resposta tipada em segundos; o estado vai inteiro numa chamada só.
-TIMEOUT_DECISAO = 120
-
-
-def _post_decisao(prov, corpo):
-    import urllib.error
-    import urllib.request
-
-    pedido = urllib.request.Request(
-        prov.url or provedores.URL_DECISIONS, data=json.dumps(corpo, ensure_ascii=False).encode(),
-        headers={"Authorization": f"Bearer {prov.chave}", "Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(pedido, timeout=TIMEOUT_DECISAO) as resposta:
-            return json.loads(resposta.read())
-    except urllib.error.HTTPError as e:
-        detalhe = e.read().decode(errors="replace")[:500]
-        if e.code == 401:
-            raise GeracaoFalhou(f"A chave de '{prov.slug}' foi recusada", detalhe) from e
-        # 429, 5xx e o 402 de orçamento em voo passam; 402 de crédito esgotado não (a doc do Jev separa os dois)
-        if e.code == 429 or e.code >= 500 or (e.code == 402 and "in-flight" in detalhe.lower()):
-            raise GeracaoFalhou("Limite de requisições atingido, tente de novo", detalhe) from e
-        raise GeracaoFalhou(f"'{prov.slug}' respondeu {e.code}", detalhe) from e
-    except (urllib.error.URLError, TimeoutError) as e:
-        raise GeracaoFalhou(f"Não conseguimos alcançar '{prov.slug}'", str(e)) from e
-
-
-def decidir(prov, estado, perguntas):
-    """Decisions API do OpenRouter (Jev): estado + perguntas tipadas -> (answers, usage).
-
-    Pergunta: {"tipo": {"type": "choice"|"noul"|"score", "instructions": ..., "criteria": ...}}. Não é chat --
-    não há texto na resposta, só a escolha com probabilidades. Repete o que é transitório, como os adaptadores.
-    """
-    corpo = {"model": prov.modelo, "state": estado, "questions": perguntas}
-    for tentativa in range(1, TENTATIVAS + 1):
-        try:
-            resposta = _post_decisao(prov, corpo)
-            break
-        except GeracaoFalhou as falha:
-            if "Limite de requisições" not in falha.motivo or tentativa == TENTATIVAS:
-                raise
-            espera = ESPERA_BASE**tentativa + random.uniform(0, 1)
-            logger.warning("%s na tentativa %s de %s, repetindo em %.1fs", falha.motivo, tentativa, TENTATIVAS,
-                           espera)
-            time.sleep(espera)
-    respostas = resposta.get("answers") or {}
-    faltando = sorted(set(perguntas) - set(respostas))
-    if faltando:
-        raise GeracaoFalhou(f"'{prov.slug}' não respondeu todas as perguntas", ", ".join(faltando))
-    return respostas, resposta.get("usage") or {}
-
 
 # --------------------------------------------------------------------------
 # Entrada usada pela rota

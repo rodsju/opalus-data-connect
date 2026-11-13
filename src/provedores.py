@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 # decisions: Decisions API do OpenRouter (Jev, da TypeSafe) -- manda estado + perguntas tipadas e
 # recebe a escolha com probabilidades, nao texto. Nao e chat: entra so com a capacidade "decisao".
+# Cadastrado aqui, usado pelo opalus-atlas-dash-app (analise de evolucao).
 TIPOS = ("anthropic", "openai", "decisions")
-URL_DECISIONS = "https://openrouter.ai/api/alpha/decisions"
 
 # O que o provedor sabe fazer. Protocolo (tipo) e oficio (capacidade) sao
 # coisas diferentes: o mesmo endpoint openai serve chat e embeddings, mas um
