@@ -16,6 +16,7 @@ from . import (
     bloco_contas_abertas,
     bloco_contas_status,
     bloco_faturamento_operadora,
+    bloco_retorno_operadora,
     bloco_gap_orcamento,
     bloco_glosa_operadora,
     bloco_glosa_unidade,
@@ -32,6 +33,11 @@ from . import (
     bloco_gp_prazo_recurso,
     bloco_gp_resumo,
     bloco_gp_unidade,
+    bloco_med_estoque,
+    bloco_med_evolucao,
+    bloco_med_ranking,
+    bloco_med_resumo,
+    bloco_med_unidade,
     bloco_motivos_glosa,
     bloco_orcamentos_status,
     bloco_pre_auditoria,
@@ -52,7 +58,7 @@ RELATORIOS = {
         "a glosa interna cortada antes do envio, por situação, entidade pagadora e o que ainda está em aberto.",
         "dimensao": "homecare",
         "blocos": [bloco_resumo, bloco_cascata, bloco_pre_auditoria, bloco_contas_status,
-                   bloco_faturamento_operadora, bloco_contas_abertas],
+                   bloco_faturamento_operadora, bloco_contas_abertas, bloco_retorno_operadora],
     },
     "glosa-iw": {
         "titulo": "Glosa IW",
@@ -97,6 +103,17 @@ RELATORIOS = {
         "aviso": "Orçamento usa a unidade de negócio canônica (GLBHEALTHPROVIDER, ex.: 'Premier Brooklin "
         "HSP'), diferente da unidade do faturamento.",
         "blocos": [bloco_orcamentos_status, bloco_gap_orcamento],
+    },
+    "medicamentos": {
+        "titulo": "Medicamentos",
+        "icone": "pill",
+        "descricao": "Custo do que a farmácia dispensou aos pacientes, os itens mais caros e mais usados, onde o "
+        "custo se concentra e quanto está parado em estoque.",
+        "dimensao": "provider",
+        "filtro_categoria": True,
+        "aviso": "Custo = custo de aquisição do movimento (dispensado e entregue, menos o devolvido), não o preço "
+        "cobrado da operadora.",
+        "blocos": [bloco_med_resumo, bloco_med_ranking, bloco_med_unidade, bloco_med_evolucao, bloco_med_estoque],
     },
     "ocupacao": {
         "titulo": "Ocupação",
@@ -182,11 +199,11 @@ def _motivos(filtros):
         return []
 
 
-def consultar(slug, mes, unidade="", convenio="", motivo="", tipo=""):
+def consultar(slug, mes, unidade="", convenio="", motivo="", tipo="", de="", ate="", categoria=""):
     relatorio = RELATORIOS[slug]
     filtros = comum.Filtros(mes, unidade, convenio if relatorio.get("filtro_convenio") else "",
                             motivo if relatorio.get("filtro_motivo") else "",
-                            tipo if relatorio.get("filtro_tipo", True) else "")
+                            tipo if relatorio.get("filtro_tipo", True) else "", de, ate, categoria)
     inicio = time.perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=PARALELO) as pool:
         futuros = [pool.submit(_executar, b, filtros) for b in relatorio["blocos"]]
@@ -228,12 +245,22 @@ def _carga_ativa():
         return None
 
 
-def gerar_pagina(usuario, slug, mes="", unidade="", convenio="", motivo="", tipo=""):
+def gerar_pagina(usuario, slug, mes="", unidade="", convenio="", motivo="", tipo="", de="", ate="",
+                 categoria=""):
     if slug not in RELATORIOS:
         return None, 404
     relatorio = RELATORIOS[slug]
     aviso_mes = None
     mes = (mes or "").strip()
+    de, ate = (de or "").strip(), (ate or "").strip()
+    if relatorio.get("sem_periodo"):
+        de = ate = ""
+    if de or ate:
+        try:
+            comum.intervalo(de, ate)
+        except comum.PeriodoInvalido as falha:
+            aviso_mes = f"Intervalo inválido: {falha}. Mostrando a competência."
+            de = ate = ""
     try:
         if mes or not relatorio.get("periodo_opcional"):
             comum.periodo(mes or comum.mes_padrao())
@@ -254,7 +281,7 @@ def gerar_pagina(usuario, slug, mes="", unidade="", convenio="", motivo="", tipo
                 sem_conexao=None, carga=None,
             )
             return html, 200
-    ctx = consultar(slug, mes, unidade, convenio, motivo, tipo)
+    ctx = consultar(slug, mes, unidade, convenio, motivo, tipo, de, ate, categoria)
     ctx["carga"] = carga
     html = layout.render(
         "reports/relatorio.html",

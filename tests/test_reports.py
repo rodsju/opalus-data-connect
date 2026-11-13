@@ -15,6 +15,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from src.reports import comum, fonte, relatorios, sql_oracle  # noqa: E402
 from src.reports import bloco_contas_status, bloco_glosa_unidade, bloco_resumo  # noqa: E402
+from src.reports import (bloco_med_estoque, bloco_med_evolucao, bloco_med_ranking, bloco_med_resumo,  # noqa: E402
+                         med_comum)
 
 TEMPLATES = pathlib.Path(__file__).resolve().parent.parent / "src" / "templates"
 
@@ -38,6 +40,27 @@ def test_periodo_invalido(mes):
         comum.periodo(mes)
 
 
+def test_intervalo_inclui_o_ultimo_dia():
+    assert comum.intervalo("2026-06-10", "2026-06-20") == (datetime.date(2026, 6, 10), datetime.date(2026, 6, 21))
+
+
+@pytest.mark.parametrize("de, ate", [("2026-06-20", "2026-06-10"), ("2026-06-10", ""), ("", "2026-06-10"),
+                                     ("10/06/2026", "2026-06-20")])
+def test_intervalo_invalido(de, ate):
+    with pytest.raises(comum.PeriodoInvalido):
+        comum.intervalo(de, ate)
+
+
+def test_filtros_intervalo_substitui_a_competencia():
+    f = comum.Filtros("2026-06", de="2026-05-15", ate="2026-06-14")
+    assert f.mes == "" and f.personalizado
+    assert f.params()["DT_INI"] == datetime.date(2026, 5, 15)
+    assert f.params()["DT_FIM"] == datetime.date(2026, 6, 15)
+    assert f.rotulo_periodo == "15/05/2026 a 14/06/2026"
+    assert f.query_periodo == "de=2026-05-15&ate=2026-06-14"
+    assert comum.Filtros("2026-06").query_periodo == "mes=2026-06"
+
+
 def test_mes_padrao_e_o_anterior():
     assert comum.mes_padrao(datetime.date(2026, 1, 15)) == "2025-12"
     assert comum.mes_padrao(datetime.date(2026, 9, 28)) == "2026-08"
@@ -53,7 +76,7 @@ def test_sql_so_usa_binds_conhecidos(nome):
     sql = sql_oracle.CONSULTAS[nome]
     binds = set(re.findall(r":([A-Z_]+)", sql))
     assert binds <= {"DT_INI", "DT_FIM", "UNIDADE", "PROTOCOLOS", "COMPETENCIAS", "ID", "TIPO", "IDS", "ADMISSAO",
-                     "ORCAMENTO", "SENHAS"}
+                     "ORCAMENTO", "SENHAS", "CATEGORIA", "TABELAS"}
     # Fragmento esquecido sem interpolar viraria SQL inválida só em produção
     assert "{" not in sql
 
@@ -108,11 +131,27 @@ def test_resumo_tira_simulacao_do_faturado():
         {"situacao": "Simulação", "contas": 5, "faturamento_grupo": 999, "fatura_operadora": 999},
     ]
     cards = {c["rotulo"]: c for c in bloco_resumo.montar(contas, [], None)["cards"]}
-    assert cards["Faturamento do grupo"]["valor"] == 150
+    assert cards["Faturável"]["valor"] == 150
     assert cards["Fatura operadora"]["valor"] == 140
     assert cards["Em aberto"]["valor"] == 50
     assert cards["Taxa de glosa"]["valor"] is None  # divisor zero não quebra
     assert "Autorizado sem faturar" not in cards  # gap ausente com filtro de unidade
+
+
+def test_resumo_abre_com_bruto_e_pacote_da_cascata():
+    contas = [
+        {"situacao": "Exportada (fechada)", "contas": 1, "bruto": 200, "pacote": 80, "pre_auditoria": 20,
+         "faturamento_grupo": 100, "fatura_operadora": 100},
+        {"situacao": "Simulação", "contas": 1, "bruto": 999, "pacote": 999, "faturamento_grupo": 0},
+    ]
+    cards = bloco_resumo.montar(contas, [], None)["cards"]
+    passos = [(c["sinal"], c["rotulo"]) for c in cards[:6]]
+    assert passos == [("+", "Bruto lançado"), ("−", "Incluso em pacote"), ("−", "Pré-auditoria"),
+                      ("=", "Faturável"), ("−", "Particular"), ("=", "Fatura operadora")]
+    assert cards[0]["valor"] == 200
+    assert cards[1]["valor"] == 80 and cards[1]["barra"] == 40
+    assert cards[3]["barra"] == 50
+    assert all("sinal" not in c for c in cards[6:])  # fora da cascata, sem sinal
 
 
 def test_resumo_gap_sem_valor_mostra_quantidade():
@@ -329,8 +368,119 @@ def test_pre_auditoria_bloco_e_consulta():
     from src.reports import bloco_pre_auditoria
 
     d = bloco_pre_auditoria.montar_amostra()
-    assert d["kpis"][0]["valor"] == 27_700 and round(d["kpis"][2]["valor"], 1) == round(27 / 28 * 100, 1)
+    assert d["kpis"][0]["valor"] == 27_700
+    assert d["kpis"][2]["rotulo"] == "Pré-auditadas e glosadas" and d["kpis"][2]["valor"] == 2
     assert d["motivos"][0]["origem"] == "interno" and d["grafico_meses"]["rotulos"][0] == "2026-01"
     consulta = registro.CONSULTAS["pre-auditoria"]
     nome = [c for c in consulta["colunas"] if c.get("formato") == "nome_paciente"]
     assert nome and nome[0]["so_tela"]  # nome nunca no CSV
+
+
+def test_pre_auditadas_e_glosadas_casa_por_admissao_ou_paciente():
+    from src.reports import bloco_pre_auditoria
+
+    itens = [
+        {"id_conta": 1, "id_admissao": 10, "id_paciente": 100},
+        {"id_conta": 1, "id_admissao": 10, "id_paciente": 100},  # 2º item, mesma conta do paciente
+        {"id_conta": 1, "id_admissao": 11, "id_paciente": 101},
+        {"id_conta": 2, "id_admissao": 20, "id_paciente": 200},
+    ]
+    glosas = [
+        {"id_conta": 1, "id_admissao": 10, "id_paciente": 100, "glosa": 500},
+        {"id_conta": 2, "id_admissao": None, "id_paciente": 200, "glosa": 70},  # casada pelo total do paciente
+        {"id_conta": 3, "id_admissao": 30, "id_paciente": 300, "glosa": 999},  # conta sem pré-auditoria
+    ]
+    assert bloco_pre_auditoria.glosadas(itens, glosas) == (3, 2, 570)
+    assert bloco_pre_auditoria.glosadas(itens, None) == (3, None, None)  # sem planilha, não inventa zero
+
+
+def test_retorno_operadora_separa_sem_retorno_divergente_e_conciliado():
+    from src.reports import bloco_retorno_operadora as b
+
+    guias = [{"id_conta": 1, "id_admissao": 11, "operadora": "A", "faturavel": 100},
+             {"id_conta": 1, "id_admissao": 12, "operadora": "A", "faturavel": 50},
+             {"id_conta": 2, "id_admissao": 21, "operadora": "B", "faturavel": 30}]
+    xml = [{"id_conta": 1, "id_admissao": 11, "situacao": "CONCILIADO"},
+           {"id_conta": 2, "id_admissao": 21, "situacao": "DIVERGENTE"}]
+    planilha = [{"id_conta": 2, "id_admissao": 21, "situacao": "CONCILIADO"}]  # XML prevalece
+    d = b.montar(guias, xml, planilha, {"arquivos": 1})
+    assert d["total"]["sem_retorno"] == 50 and d["total"]["guias_sem_retorno"] == 1
+    assert d["total"]["divergente"] == 30 and d["total"]["conciliado"] == 100
+    assert {l["operadora"]: l["pct_sem_retorno"] for l in d["linhas"]} == {"A": 50 / 150 * 100, "B": 0}
+    assert d["origens"] == {"xml": 2, "planilha": 0}
+    # Só a planilha: por admissão ou, na linha casada pelo total, pelo paciente
+    guias[1]["id_paciente"] = 9
+    planilha = [{"id_conta": 1, "id_admissao": 11, "situacao": "CONCILIADO"},
+                {"id_conta": 1, "id_admissao": None, "id_paciente": 9, "situacao": "CONCILIADO"}]
+    d = b.montar(guias, [], planilha, {})
+    assert d["total"]["guias_sem_retorno"] == 1 and d["origens"] == {"xml": 0, "planilha": 2}
+    # Postgres fora: avisa em vez de marcar tudo como sem retorno em silêncio
+    assert b.montar(guias, None, None, None)["sem_conciliacao"]
+    assert "NOT (NVL(op.CORPORATION, 0) = 1)" in sql_oracle.CONSULTAS["exportadas_por_guia"]  # particular fora
+
+
+# --------------------------------------------------------------------------
+# Medicamentos
+# --------------------------------------------------------------------------
+
+
+def test_filtros_categoria_padrao_e_todas():
+    assert comum.Filtros("2026-08").params()["CATEGORIA"] == 55
+    assert comum.Filtros("2026-08", categoria="xx").categoria == "55"
+    assert comum.Filtros("2026-08", categoria="56").params()["CATEGORIA"] == 56
+    assert comum.Filtros("2026-08", categoria="todas").params()["CATEGORIA"] is None
+
+
+def test_medicamentos_custo_soma_dispensacao_e_abate_devolucao():
+    sql = sql_oracle.CONSULTAS["med_por_item"]
+    assert "CASE WHEN m.MOVTYPE = 15 THEN -1 ELSE 1 END" in sql
+    assert "m.MOVTYPE IN (11, 14) AND m.DELIVERED > 0" in sql
+    assert "TOTALCOST" not in sql  # vem nulo nas dispensações
+
+
+def test_med_ranking_pareto_e_demais():
+    linhas = [{"grupo": f"item {i}", "custo": 100 - i, "quantidade": 10, "dispensacoes": i}
+              for i in range(bloco_med_ranking.TOP + 5)]
+    d = bloco_med_ranking.montar(linhas)
+    assert len(d["itens"]) == bloco_med_ranking.TOP + 1 and d["itens"][-1]["outros"]
+    assert sum(l["custo"] for l in d["itens"]) == pytest.approx(d["total"]["custo"])
+    assert d["itens"][0]["unitario"] == pytest.approx(10.0)
+    assert bloco_med_ranking.montar([{"grupo": "x", "custo": 5, "quantidade": 0}])["itens"][0]["unitario"] is None
+
+
+def test_med_resumo_custo_por_paciente_e_estoque_velho():
+    f = comum.Filtros("2026-08")
+    total = [{"custo": 1000, "pacientes": 4, "dispensacoes": 10, "sem_custo": 0, "devolvido": 0}]
+    velho = [{"area": "A", "posicao": datetime.date(2026, 8, 20), "valor": 50}]
+    d = bloco_med_resumo.montar(total, [], velho, f)
+    estoque = d["cards"][-1]
+    assert estoque["valor"] == 50 and "desatualizada" in estoque["hint"]
+    assert "R$ 250" in d["cards"][2]["hint"]
+    em_dia = bloco_med_resumo.montar(total, [], [{**velho[0], "posicao": datetime.date(2026, 8, 31)}], f)
+    assert "desatualizada" not in em_dia["cards"][-1]["hint"]
+    # Estoque indisponível não derruba o custo
+    assert len(bloco_med_resumo.montar(total, [], None, f)["cards"]) == 4
+
+
+def test_med_cobertura_sem_consumo_fica_vazia():
+    assert med_comum.cobertura(100, 0, 31) is None
+    assert med_comum.cobertura(100, 310, 31) == pytest.approx(10)
+    d = bloco_med_estoque.montar(
+        [{"area": "A", "unidade": "U", "posicao": datetime.date(2026, 8, 31), "itens": 2, "valor": 300}],
+        [{"item": "x", "saldo": 5, "valor": 300}], [{"grupo": "A", "custo": 310}], [], comum.Filtros("2026-08"))
+    assert d["areas"][0]["cobertura"] == pytest.approx(30)
+    assert d["itens"][0]["cobertura"] is None and d["parados"] == 1
+
+
+def test_med_evolucao_preenche_meses_sem_movimento():
+    d = bloco_med_evolucao.montar([{"grupo": "2026-06", "custo": 10, "pacientes": 1},
+                                   {"grupo": "2026-08", "custo": 30, "pacientes": 3}])
+    assert [s["mes"] for s in d["serie"]] == ["2026-06", "2026-07", "2026-08"]
+    assert d["serie"][1]["custo"] == 0 and d["serie"][1]["por_paciente"] is None
+
+
+def test_todo_relatorio_tem_link_no_menu():
+    from src import layout
+
+    links = {i["href"] for grupo in layout.MENU for i in grupo["itens"]}
+    assert {f"/reports/{s}" for s in relatorios.RELATORIOS} <= links

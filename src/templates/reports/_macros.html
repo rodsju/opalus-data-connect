@@ -1,12 +1,12 @@
 {# Peças visuais dos /reports. Valores chegam crus; a formatação é daqui. #}
 
-{# cards: [{rotulo, valor, formato, hint, icone, tom, barra}] #}
+{# cards: [{rotulo, valor, formato, hint, icone, tom, barra, sinal}]; sinal (+, −, =) é o passo na cascata #}
 {% macro kpis(cards) %}
 <div class="rp-kpis">
   {% for c in cards %}
   <div class="rp-kpi rp-kpi--{{ c.tom or 'blue' }}">
     <div class="rp-kpi__topo">
-      <span class="rp-kpi__rotulo">{{ c.rotulo }}</span>
+      <span class="rp-kpi__rotulo">{% if c.sinal %}<span class="rp-kpi__sinal">({{ c.sinal }})</span> {% endif %}{{ c.rotulo }}</span>
       <span class="rp-kpi__icone"><i data-lucide="{{ c.icone or 'circle' }}"></i></span>
     </div>
     <div class="rp-kpi__valor" title="{{ c.valor | valor('moeda' if c.formato == 'moeda_curta' else c.formato) }}">{{ c.valor | valor(c.formato) }}</div>

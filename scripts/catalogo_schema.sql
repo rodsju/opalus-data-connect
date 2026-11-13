@@ -35,11 +35,11 @@ CREATE TABLE IF NOT EXISTS catalogo.provedor_ia (
   id            bigserial PRIMARY KEY,
   slug          text NOT NULL UNIQUE,   -- identidade; e o que descricao_ia grava
   nome          text NOT NULL,
-  tipo          text NOT NULL CHECK (tipo IN ('anthropic', 'openai')),
+  tipo          text NOT NULL CHECK (tipo IN ('anthropic', 'openai', 'decisions')),
   -- Protocolo (tipo) e oficio (capacidade) sao coisas diferentes: o mesmo
   -- endpoint openai serve chat e embeddings, mas um modelo nao faz os dois. Sem
   -- isto um modelo de embedding apareceria no select de gerar descricao.
-  capacidade    text NOT NULL DEFAULT 'llm' CHECK (capacidade IN ('llm', 'embedding')),
+  capacidade    text NOT NULL DEFAULT 'llm' CHECK (capacidade IN ('llm', 'embedding', 'decisao')),
   url           text NOT NULL DEFAULT '',
   modelos       text[] NOT NULL,
   chave_cifrada bytea NOT NULL,
@@ -323,11 +323,14 @@ CREATE INDEX IF NOT EXISTS coluna_nome_idx ON catalogo.coluna (nome);
 
 ALTER TABLE catalogo.provedor_ia
   ADD COLUMN IF NOT EXISTS capacidade text NOT NULL DEFAULT 'llm';
-DO $$ BEGIN
-  ALTER TABLE catalogo.provedor_ia
-    ADD CONSTRAINT provedor_ia_capacidade_check CHECK (capacidade IN ('llm', 'embedding'));
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+-- Decisions API (Jev, OpenRouter): tipo 'decisions' + capacidade 'decisao'. Recria os CHECKs com a lista
+-- nova -- o ADD com duplicate_object de antes nunca atualizaria a lista num banco já de pé.
+ALTER TABLE catalogo.provedor_ia DROP CONSTRAINT IF EXISTS provedor_ia_capacidade_check;
+ALTER TABLE catalogo.provedor_ia
+  ADD CONSTRAINT provedor_ia_capacidade_check CHECK (capacidade IN ('llm', 'embedding', 'decisao'));
+ALTER TABLE catalogo.provedor_ia DROP CONSTRAINT IF EXISTS provedor_ia_tipo_check;
+ALTER TABLE catalogo.provedor_ia
+  ADD CONSTRAINT provedor_ia_tipo_check CHECK (tipo IN ('anthropic', 'openai', 'decisions'));
 
 ALTER TABLE catalogo.objeto
   ADD COLUMN IF NOT EXISTS embedding        vector,

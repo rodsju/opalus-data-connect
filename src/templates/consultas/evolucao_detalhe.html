@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% import "reports/_macros.html" as rp %}
+{% block head %}<link rel="stylesheet" href="/static/css/reports.css">{% endblock %}
+{% set tom_tendencia = {'melhorando': 'teal', 'estavel': 'blue', 'piorando': 'coral', 'indeterminado': 'neutral'} %}
+{% set tom_sinal = {'melhora': 'teal', 'piora': 'coral', 'alerta': 'amber'} %}
+{# Conclusão da pergunta do tipo (evolucao_ia.FOCOS): vermelho = atenção, verde = bom caminho #}
+{% set tom_conclusao = {'alto': 'coral', 'medio': 'amber', 'baixo': 'teal', 'hospital_agudo': 'coral', 'permanencia_prolongada': 'amber', 'home_care': 'blue', 'alta_casa': 'teal', 'atingindo': 'teal', 'estagnado': 'amber', 'piorando': 'coral', 'indeterminado': 'neutral'} %}
+
+{% block conteudo %}
+{% set a = ctx.admissao if ctx else none %}
+{% with titulo='Evolução clínica · admissão ' ~ id_admissao, icone='activity', descricao=(a.unidade ~ ' · ' ~ a.tipo_nome ~ ' · ' ~ a.operadora) if a else '', chips=([{'icone': 'user', 'texto': 'Paciente', 'paciente': a.paciente_codigo}, {'icone': 'hash', 'texto': 'Código ' ~ a.paciente_codigo}, {'icone': 'calendar', 'texto': 'Competência ' ~ mes}, {'icone': 'log-in', 'texto': 'Entrada ' ~ (a.entrada | fmt)}] + ([{'icone': 'log-out', 'texto': 'Saída ' ~ (a.saida | fmt)}] if a.saida else []) if a else []) %}
+{% with abas=consultas, grupo="Consultas" %}{% include "reports/_cabecalho.html" %}{% endwith %}
+{% endwith %}
+
+<main class="rp-wrap rp-wrap--larga">
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+    <a class="rp-btn rp-btn--ghost" href="/consultas/evolucao?mes={{ mes }}"><i data-lucide="arrow-left"></i>Voltar à lista</a>
+    <form method="get" class="rp-form" style="display:flex;gap:.5rem;align-items:center">
+      <input type="month" name="mes" value="{{ mes }}" aria-label="Competência">
+      <button class="rp-btn rp-btn--ghost" type="submit"><i data-lucide="calendar"></i>Trocar competência</button>
+    </form>
+  </div>
+  {% if aviso %}<div class="rp-alerta rp-alerta--info"><i data-lucide="circle-check"></i><div>{{ aviso }}</div></div>{% endif %}
+  {% if erro %}<div class="rp-alerta rp-alerta--erro"><i data-lucide="circle-x"></i><div><b>{{ erro.motivo }}</b>{% if erro.detalhe %} — {{ erro.detalhe }}{% endif %}</div></div>{% endif %}
+  {% if ctx %}
+  {% if ctx.formularios_indisponiveis %}<div class="rp-alerta rp-alerta--info"><i data-lucide="info"></i><div>Formulários sem conteúdo legível (tabela do template ausente ou sem acesso): {{ ctx.formularios_indisponiveis | join(', ') }}. As evoluções aparecem, sem o conteúdo, e a IA não lê o que está nelas.</div></div>{% endif %}
+  {{ rp.kpis([
+    {'rotulo': 'Evoluções', 'valor': ctx.evolucoes | length, 'formato': 'int', 'icone': 'notebook-pen', 'tom': 'blue', 'hint': (ctx.por_especialidade | length) ~ ' especialidade(s)'},
+    {'rotulo': 'Médicas', 'valor': ctx.evolucoes | selectattr('medica') | list | length, 'formato': 'int', 'icone': 'stethoscope', 'tom': 'violet'},
+    {'rotulo': 'Intercorrências', 'valor': ctx.intercorrencias | length, 'formato': 'int', 'icone': 'siren', 'tom': 'magenta', 'hint': (ctx.intercorrencias | selectattr('sem_evolucao') | list | length) ~ ' sem evolução médica'},
+    {'rotulo': 'Prescrições médicas', 'valor': ctx.prescricoes | length, 'formato': 'int', 'icone': 'file-text', 'tom': 'cyan', 'hint': (ctx.prescricoes | selectattr('sem_evolucao') | list | length) ~ ' sem evolução médica'},
+    {'rotulo': 'Cópias sem mudança', 'valor': ctx.copias, 'formato': 'int', 'icone': 'copy', 'tom': 'amber', 'hint': 'evolução igual à anterior do mesmo formulário'},
+  ]) }}
+
+  <div class="rp-grid">
+    <section class="rp-bloco rp-bloco--meia">
+      <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="triangle-alert"></i></span><h2>Pendências por regra</h2>{{ rp.badge('com pendência' if ctx.pendencias else 'em dia', 'coral' if ctx.pendencias else 'teal') }}</header>
+      <div class="rp-bloco__corpo">
+        {% for p in ctx.pendencias %}<div class="rp-etapa rp-share--coral"><div>{{ p }}</div></div>
+        {% else %}<p class="rp-sub">Nenhuma regra disparou nesta competência.</p>{% endfor %}
+        <p class="rp-sub">Regras: nenhuma evolução médica no mês (admissão com 2+ dias no período) · intercorrência sem evolução médica em até 48 h · prescrição médica sem evolução médica de D-1 a D+1.</p>
+        <h3 class="rp-subtitulo">Evoluções por especialidade</h3>
+        <table class="rp-tabela rp-tabela--compacta"><tbody>
+          {% for esp, n in ctx.por_especialidade %}<tr><td>{{ esp }}</td><td class="num">{{ n }}</td></tr>
+          {% else %}<tr><td class="rp-sub">Sem evoluções no período.</td></tr>{% endfor %}
+        </tbody></table>
+      </div>
+    </section>
+
+    <section class="rp-bloco rp-bloco--meia">
+      <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="sparkles"></i></span><h2>Tendência por IA</h2>{% if analise %}<span class="rp-bloco__tempo">{{ analise.criado_em | fmt }} · {{ analise.modelo }}</span>{% endif %}</header>
+      <div class="rp-bloco__corpo">
+        {% if analise %}{% set r = analise.resultado %}
+        {% set f = ctx.foco %}{% set c = r.get(f.campo) %}
+        {% if c %}<div class="rp-etapa rp-share--{{ tom_conclusao.get(c, 'blue') }}"><div class="rp-etapa__topo"><b>{{ f.rotulo }}</b>{{ rp.badge(f.valores.get(c, c), tom_conclusao.get(c, 'blue')) }}</div></div>{% endif %}
+        <div class="rp-etapa__topo"><span class="rp-sub">Tendência</span>{{ rp.badge(rotulos_tendencia[r.tendencia], tom_tendencia[r.tendencia]) }}<span class="rp-sub">confiança {{ r.confianca }}</span></div>
+        <p>{{ r.resumo }}</p>
+        {% if r.motor == 'jev' and r.probabilidades %}
+        <table class="rp-tabela rp-tabela--compacta"><tbody>
+          {% for k, v in (r.probabilidades.get(f.campo) or {}).items() %}<tr><td>{{ f.valores.get(k, k) }}</td><td class="num">{{ (100 * (v or 0)) | round | int }}%</td></tr>{% endfor %}
+        </tbody></table>
+        <p class="rp-sub">Motor: Jev (decisão com probabilidade).</p>
+        {% endif %}
+        {% for s in r.sinais %}
+        <div class="rp-etapa rp-share--{{ tom_sinal[s.tipo] }}">
+          <div class="rp-etapa__topo">{{ rp.badge(s.tipo, tom_sinal[s.tipo]) }}<span class="mono rp-sub">{{ s.data }}{% if s.id_evolucao %} · evolução {{ s.id_evolucao }}{% endif %}</span></div>
+          <div>{{ s.evidencia }}</div>
+        </div>
+        {% endfor %}
+        {% if r.pendencias %}<h3 class="rp-subtitulo">Pendências apontadas</h3>{% endif %}
+        {% for p in r.pendencias %}
+        <div class="rp-etapa rp-share--amber"><b>{{ p.descricao }}</b><div>→ {{ p.recomendacao }}</div></div>
+        {% endfor %}
+        {% else %}
+        <p class="rp-sub">Ainda não analisado nesta competência.</p>
+        {% endif %}
+        {% if motores and pode_ver and ctx.evolucoes %}
+        <form method="post" action="/consultas/evolucao/{{ id_admissao }}/analisar" class="rp-form">
+          <input type="hidden" name="mes" value="{{ mes }}">
+          <select name="par" aria-label="Motor da análise">
+            {% for valor, rotulo in motores %}<option value="{{ valor }}"{% if analise and valor == analise.provedor ~ '::' ~ analise.modelo %} selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+          <button class="rp-btn" type="submit"><i data-lucide="sparkles"></i>{{ 'Reanalisar' if analise else 'Analisar evolução' }}</button>
+          {% if analise %}<label class="rp-sub"><input type="checkbox" name="forcar" value="1"> forçar nova chamada mesmo sem mudança</label>{% endif %}
+        </form>
+        <p class="rp-sub">Pergunta para {{ a.tipo_nome | lower }}: <b>{{ ctx.foco.rotulo | lower }}</b>.</p>
+        <p class="rp-sub">O Jev responde só a decisão de cada pergunta, com probabilidade (sem texto, sinais nem pendências); o LLM escreve resumo, sinais e pendências. Vão para a IA o histórico de admissões com o desfecho, os campos dos formulários de evolução (a primeira de cada formulário inteira, depois só o que mudou), as intercorrências, as prescrições médicas e as pendências por regra — com o paciente só pelo código e nome, CPF e telefone retirados do texto. Apoio à coordenação: não substitui a avaliação médica.</p>
+        {% elif not motores %}
+        <p class="rp-sub">Nenhum provedor de IA configurado (Setup › AI Providers).</p>
+        {% elif not pode_ver %}
+        <p class="rp-sub">Sem permissão para dados clínicos.</p>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+
+  <div class="rp-grid">
+    <section class="rp-bloco rp-bloco--meia">
+      <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="history"></i></span><h2>Admissões do paciente (12 meses)</h2>
+        {% if ctx.por_tipo.internacoes_90d is defined %}<span class="rp-bloco__tempo">{{ ctx.por_tipo.internacoes_90d }} internação(ões) em 90 dias</span>{% endif %}
+        {% if ctx.por_tipo.dias_internado is defined %}<span class="rp-bloco__tempo">{{ ctx.por_tipo.dias_internado }} dias internado</span>{% endif %}</header>
+      <div class="rp-bloco__corpo rp-tabela-wrap">
+        <table class="rp-tabela rp-tabela--compacta">
+          <thead><tr><th>IdAdm</th><th>Tipo</th><th>Entrada</th><th>Saída</th><th>Desfecho</th></tr></thead>
+          <tbody>{% for h in ctx.historico %}<tr><td class="mono">{{ h.id_admissao }}{% if h.id_admissao == id_admissao %} {{ rp.badge('esta', 'blue') }}{% endif %}</td><td>{{ h.tipo_nome }}</td><td>{{ h.entrada | fmt }}</td><td>{{ h.saida | fmt }}</td>
+            <td>{{ rp.badge(h.desfecho_nome, {'internação hospitalar': 'coral', 'óbito': 'neutral', 'alta': 'teal', 'em atendimento': 'blue'}.get(h.desfecho_nome, 'amber')) }}</td></tr>
+          {% else %}<tr><td colspan="5" class="rp-sub">Sem admissões no período.</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </section>
+    {% if ctx.por_tipo.sessoes is defined %}{% set ss = ctx.por_tipo.sessoes %}
+    <section class="rp-bloco rp-bloco--meia">
+      <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="calendar-check"></i></span><h2>Sessões do ambulatório</h2></header>
+      <div class="rp-bloco__corpo">
+        {{ rp.kpis([
+          {'rotulo': 'Agendadas', 'valor': ss.agendadas, 'formato': 'int', 'icone': 'calendar', 'tom': 'blue', 'hint': ss.canceladas ~ ' cancelada(s)'},
+          {'rotulo': 'Compareceu', 'valor': ss.compareceu, 'formato': 'int', 'icone': 'user-check', 'tom': 'teal'},
+          {'rotulo': 'Faltas', 'valor': ss.faltas, 'formato': 'int', 'icone': 'user-x', 'tom': 'coral'},
+          {'rotulo': 'Sem evolução', 'valor': ss.realizadas_sem_evolucao, 'formato': 'int', 'icone': 'file-x', 'tom': 'amber', 'hint': 'sessão realizada sem registro'},
+        ]) }}
+        <p class="rp-sub">O ambulatório não tem autorização no ERP (sem orçamento, quantidade autorizada zerada): a conta é agenda × comparecimento × evolução.</p>
+      </div>
+    </section>
+    {% endif %}
+  </div>
+
+  <div class="rp-grid">
+    <section class="rp-bloco rp-bloco--meia">
+      <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="siren"></i></span><h2>Intercorrências</h2></header>
+      <div class="rp-bloco__corpo rp-tabela-wrap">
+        <table class="rp-tabela rp-tabela--compacta">
+          <thead><tr><th>Início</th><th>Classificação</th><th>Evolução médica em 48 h</th></tr></thead>
+          <tbody>{% for i in ctx.intercorrencias %}<tr><td>{{ i.inicio | fmt }}</td><td>{{ i.classificacao }}</td><td>{{ rp.badge('não', 'coral') if i.sem_evolucao else rp.badge('sim', 'teal') }}</td></tr>
+          {% else %}<tr><td colspan="3" class="rp-sub">Nenhuma intercorrência no período.</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </section>
+    <section class="rp-bloco rp-bloco--meia">
+      <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="file-text"></i></span><h2>Prescrições médicas</h2></header>
+      <div class="rp-bloco__corpo rp-tabela-wrap">
+        <table class="rp-tabela rp-tabela--compacta">
+          <thead><tr><th>Vigência</th><th>Assinada</th><th>Evolução médica D-1 a D+1</th></tr></thead>
+          <tbody>{% for p in ctx.prescricoes %}<tr><td>{{ p.inicio | fmt }}<div class="rp-sub">até {{ p.fim | fmt }}{% if p.emergencia %} · emergência{% endif %}</div></td><td>{{ 'sim' if p.assinada else 'não' }}</td><td>{{ rp.badge('não', 'coral') if p.sem_evolucao else rp.badge('sim', 'teal') }}</td></tr>
+          {% else %}<tr><td colspan="3" class="rp-sub">Nenhuma prescrição médica no período.</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <section class="rp-bloco rp-bloco--inteira">
+    <header class="rp-bloco__head"><span class="rp-bloco__icone"><i data-lucide="list-ordered"></i></span><h2>Linha do tempo das evoluções</h2>
+      <span class="rp-bloco__tempo">{% if pode_ver %}a primeira de cada formulário inteira; depois, só o que mudou{% else %}sem permissão para o conteúdo{% endif %}</span></header>
+    <div class="rp-bloco__corpo rp-tabela-wrap">
+      <table class="rp-tabela rp-tabela--compacta">
+        <thead><tr><th>Data</th><th>Especialidade</th><th>Formulário</th><th>Conteúdo</th></tr></thead>
+        <tbody>
+          {% for e in ctx.evolucoes %}
+          <tr>
+            <td class="mono">{{ e.data | fmt }}<div class="rp-sub">#{{ e.id_evolucao }}</div></td>
+            <td>{{ e.especialidade }}{% if e.medica %} {{ rp.badge('médica', 'violet') }}{% endif %}{% if not e.assinada %} {{ rp.badge('não assinada', 'amber') }}{% endif %}</td>
+            <td>{{ e.formulario or '—' }}</td>
+            <td>
+              {% if not pode_ver %}<span class="rp-sub">—</span>
+              {% elif e.mudou %}
+              <details{% if e.base %} open{% endif %}><summary>{{ 'Formulário inteiro' if e.base else 'Mudou' }}: {{ e.mudou | length }} campo(s)</summary>
+                <dl class="rp-motivo">{% for k, v in e.mudou.items() %}<dt><b>{{ k }}</b></dt><dd>{{ v }}</dd>{% endfor %}</dl>
+              </details>
+              {% elif e.base %}<span class="rp-sub">formulário sem campos rotulados</span>
+              {% else %}{{ rp.badge('igual à anterior', 'neutral') }}{% endif %}
+            </td>
+          </tr>
+          {% else %}<tr><td colspan="4" class="rp-sub">Sem evoluções no período.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/reports.js"></script>
+{% endblock %}

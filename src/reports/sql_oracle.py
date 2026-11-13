@@ -406,6 +406,31 @@ SELECT NVL(op.NAME, '(sem entidade)')        AS operadora,
  ORDER BY faturamento_grupo DESC
 """
 
+# Faturamento › Exportadas sem retorno: uma linha por guia exportada à operadora
+# (conta × admissão = numeroGuiaPrestador do TISS). Particular fica de fora: não
+# há XML de volta do paciente. O retorno vem do Postgres (tiss_retornos e
+# planilha_retornos).
+SQL_EXPORTADAS_POR_GUIA = f"""
+SELECT p.ID                                  AS id_conta,
+       i.IDADMISSION                         AS id_admissao,
+       ta.IDPATIENT                          AS id_paciente,
+       NVL(op.NAME, '(sem entidade)')        AS operadora,
+       ROUND(SUM({COBRADO_ITEM}), 2)         AS faturavel
+  FROM CAPPAYMENT p
+  JOIN CAPPAYMENTITEM i ON i.IDPAYMENT = p.ID
+  {JOIN_TIPO_ITEM}
+  LEFT JOIN GLBENTERPRISE hc ON hc.ID = p.IDHOMECARE
+  LEFT JOIN GLBENTERPRISE op ON op.ID = p.IDENTERPRISE
+ WHERE {SITUACAO_CONTA.format(a='p')} = 'Exportada (fechada)'
+   AND NOT ({EH_PARTICULAR})
+   AND p.STARTDATE >= :DT_INI
+   AND p.STARTDATE <  :DT_FIM
+   AND {FILTRO_TIPO}
+   AND {FILTRO_HOMECARE}
+ GROUP BY p.ID, i.IDADMISSION, ta.IDPATIENT, NVL(op.NAME, '(sem entidade)')
+HAVING SUM({COBRADO_ITEM}) <> 0
+"""
+
 DIMENSOES_CASCATA = {
     "mes": "TO_CHAR(p.STARTDATE, 'YYYY-MM')",
     "unidade": "NVL(hc.NAME, '(sem unidade)')",
@@ -566,6 +591,19 @@ _FILTRO_LINHA = "p.ID = :ID AND NVL(i.IDADMISSION, 0) = :ADMISSAO AND NVL(i.IDBU
 SQL_CONTA_PACIENTE_LINHA = _CONTA_PACIENTE.format(filtro=_FILTRO_LINHA)
 # Outros orçamentos do mesmo paciente na mesma conta (links do detalhe)
 SQL_CONTA_PACIENTE_IRMAOS = _CONTA_PACIENTE.format(filtro="p.ID = :ID AND NVL(i.IDADMISSION, 0) = :ADMISSAO")
+# História de orçamentos (Consultas › Orçamentos), em dois passos baratos: as guias (conta × admissão)
+# que faturam cada orçamento, de qualquer competência; depois as contas pela chave. A guia vem INTEIRA,
+# com os outros orçamentos dela, para a glosa ser rateada entre eles.
+SQL_GUIAS_POR_ORCAMENTO = """
+SELECT DISTINCT i.IDPAYMENT AS id_conta, NVL(i.IDADMISSION, 0) AS id_admissao
+  FROM CAPPAYMENTITEM i JOIN CAPPAYMENT p ON p.ID = i.IDPAYMENT
+ WHERE i.IDBUDGET IN (:IDS) AND p.SIMULATION = 0
+"""
+SQL_CONTA_PACIENTE_POR_CONTA = _CONTA_PACIENTE.format(filtro="p.ID IN (:IDS)")
+# De-para item da fatura -> orçamento, para a glosa por item do XML TISS (id_item_erp)
+SQL_CONTA_PACIENTE_ITENS_ORCAMENTO = """
+SELECT i.ID AS id_item, i.IDBUDGET AS id_orcamento FROM CAPPAYMENTITEM i WHERE i.ID IN (:IDS) AND i.IDBUDGET IS NOT NULL
+"""
 
 # Itens da fatura de uma linha, com o que a pré-auditoria alterou. Imposto (tipo 15) fora.
 SQL_CONTA_PACIENTE_ITENS = f"""
@@ -882,6 +920,267 @@ SELECT pe.NAME AS nome
  WHERE pt.ID = :ID
 """
 
+# Medicamentos: custo do que saiu para o paciente, a custo do movimento
+# (MATMATERIALMOV.UNITCOST; TOTALCOST vem nulo nas dispensações). Levantado em
+# ago/2026 contra o banco: MOVTYPE 14 = dispensação da prescrição, 11 =
+# ressuprimento (kit do home care, IDRESUPPLY sempre preenchido), ambos só
+# quando DELIVERED > 0 (o resto ainda não saiu da farmácia); 15 = devolução do
+# paciente, que abate. 31 é cancelado e 30 é baixa sem custo: ficam de fora.
+# Unidade pela admissão (provider); categoria pela tabela do código (SCCTABLE:
+# 55 Medicamentos, 56 Mat. Enfermagem, 71 Dietas -- a mesma do faturamento).
+FILTRO_CATEGORIA = "(:CATEGORIA IS NULL OR sc.IDTABLE = :CATEGORIA)"
+SINAL_MED = "CASE WHEN m.MOVTYPE = 15 THEN -1 ELSE 1 END"
+
+DIMENSOES_MED = {
+    "total": "'total'",
+    "item": "sc.CODENAME",
+    "unidade": "NVL(hp.NAME, '(sem unidade)')",
+    "tipo_atendimento": TIPO_ATENDIMENTO,
+    "mes": "TO_CHAR(m.MOVDATE, 'YYYY-MM')",
+    "categoria": "NVL(st.NAME, '(sem categoria)')",
+    "area": "NVL(da.NAME, '(sem área)')",
+}
+
+SQL_MED_CONSUMO = f"""
+SELECT {{dimensao}}                                                              AS grupo,
+       MAX(st.NAME)                                                            AS categoria,
+       ROUND(SUM({SINAL_MED} * m.QUANTITY * NVL(m.UNITCOST, 0)), 2)            AS custo,
+       ROUND(SUM({SINAL_MED} * m.QUANTITY), 3)                                 AS quantidade,
+       SUM(CASE WHEN m.MOVTYPE IN (11, 14) THEN 1 ELSE 0 END)                  AS dispensacoes,
+       SUM(CASE WHEN m.MOVTYPE IN (11, 14) AND NVL(m.UNITCOST, 0) = 0 THEN 1 ELSE 0 END) AS sem_custo,
+       ROUND(SUM(CASE WHEN m.MOVTYPE = 15 THEN m.QUANTITY * NVL(m.UNITCOST, 0) ELSE 0 END), 2) AS devolvido,
+       COUNT(DISTINCT CASE WHEN m.MOVTYPE IN (11, 14) THEN ta.IDPATIENT END)   AS pacientes
+  FROM MATMATERIALMOV m
+  JOIN CAPADMISSION ta ON ta.ID = NVL(m.IDADMISSIONDEST, m.IDADMISSIONSOURCE)
+  LEFT JOIN GLBHEALTHPROVDEP d ON d.ID = ta.IDHEALTHPROVDEP
+  LEFT JOIN GLBHEALTHPROVIDER hp ON hp.ID = d.IDHEALTHPROVIDER
+  JOIN SCCCODE sc ON sc.ID = m.SCMATERIAL
+  LEFT JOIN SCCTABLE st ON st.ID = sc.IDTABLE
+  LEFT JOIN MATDISPENSINGAREA da ON da.ID = m.IDDISPENSINGAREA
+ WHERE m.MOVDATE >= :DT_INI
+   AND m.MOVDATE <  :DT_FIM
+   AND ((m.MOVTYPE IN (11, 14) AND m.DELIVERED > 0) OR m.MOVTYPE = 15)
+   AND m.IDPERSONCANCEL IS NULL
+   AND {FILTRO_TIPO}
+   AND {FILTRO_PROVIDER}
+   AND {FILTRO_CATEGORIA}
+ GROUP BY {{dimensao}}
+ ORDER BY custo DESC NULLS LAST
+"""
+
+# Estoque: MATBALANCEHISTORY é a foto diária do saldo por área de dispensação
+# (BALANCE × COST). Vale a última foto antes do fim do período -- o ERP pode
+# parar de gravar (em out/2026 a última era de 14/09), por isso a data vai junto.
+# A área não tem unidade no cadastro: vale o provider que mais recebeu
+# dispensação dela nos 90 dias anteriores ao fim do período.
+ESTOQUE_BASE = f"""
+WITH posicao AS (
+    SELECT MAX(REFERENCEDATE) AS dt FROM MATBALANCEHISTORY WHERE REFERENCEDATE < :DT_FIM
+),
+area_unidade AS (
+    SELECT iddispensingarea, unidade FROM (
+        SELECT m.IDDISPENSINGAREA AS iddispensingarea, hp.NAME AS unidade,
+               ROW_NUMBER() OVER (PARTITION BY m.IDDISPENSINGAREA ORDER BY COUNT(*) DESC) AS ordem
+          FROM MATMATERIALMOV m
+          JOIN CAPADMISSION a ON a.ID = m.IDADMISSIONDEST
+          JOIN GLBHEALTHPROVDEP d ON d.ID = a.IDHEALTHPROVDEP
+          JOIN GLBHEALTHPROVIDER hp ON hp.ID = d.IDHEALTHPROVIDER
+         WHERE m.MOVTYPE = 14
+           AND m.MOVDATE >= :DT_FIM - 90
+           AND m.MOVDATE <  :DT_FIM
+           AND m.IDDISPENSINGAREA IS NOT NULL
+         GROUP BY m.IDDISPENSINGAREA, hp.NAME)
+     WHERE ordem = 1
+),
+saldo AS (
+    SELECT b.IDDISPENSINGAREA, b.SCMATERIAL, b.BALANCE, b.COST, b.REFERENCEDATE,
+           sc.CODENAME, st.NAME AS categoria, NVL(da.NAME, '(sem área)') AS area,
+           NVL(au.unidade, '(sem unidade)') AS unidade
+      FROM MATBALANCEHISTORY b
+      JOIN posicao ON b.REFERENCEDATE = posicao.dt
+      JOIN SCCCODE sc ON sc.ID = b.SCMATERIAL
+      LEFT JOIN SCCTABLE st ON st.ID = sc.IDTABLE
+      LEFT JOIN MATDISPENSINGAREA da ON da.ID = b.IDDISPENSINGAREA
+      LEFT JOIN area_unidade au ON au.iddispensingarea = b.IDDISPENSINGAREA
+     WHERE b.BALANCE > 0
+       AND {FILTRO_CATEGORIA}
+       AND (:UNIDADE IS NULL OR UPPER(TRIM(au.unidade)) = UPPER(TRIM(:UNIDADE)))
+)"""
+
+SQL_MED_ESTOQUE_AREAS = ESTOQUE_BASE + """
+SELECT area, MAX(unidade) AS unidade, MAX(REFERENCEDATE) AS posicao,
+       COUNT(DISTINCT SCMATERIAL) AS itens,
+       ROUND(SUM(BALANCE * NVL(COST, 0)), 2) AS valor
+  FROM saldo
+ GROUP BY area
+ ORDER BY valor DESC
+"""
+
+SQL_MED_ESTOQUE_ITENS = ESTOQUE_BASE + """
+SELECT CODENAME AS item, MAX(categoria) AS categoria, MAX(REFERENCEDATE) AS posicao,
+       ROUND(SUM(BALANCE), 3) AS saldo,
+       ROUND(SUM(BALANCE * NVL(COST, 0)), 2) AS valor
+  FROM saldo
+ GROUP BY CODENAME
+ ORDER BY valor DESC
+"""
+
+# Evolução clínica (Consultas › Evolução clínica). Levantado em out/2026 contra o
+# banco: CAPEVOLUTION é o cabeçalho; o conteúdo é um formulário (template) gravado
+# numa tabela TD* por IDEVOLUTION -- GLBTEMPLATE.TABLENAME diz qual ('*TDWD_VISITAS_HSP');
+# GLBTEXT só tem ~1% das evoluções. Os vínculos IDINTERCURRENT/IDPRESCRIPTION vêm
+# sempre vazios: a pendência é por janela de tempo. Médica = especialidade com
+# "médic"/"fisiatr" no nome (Médico(A), Coordenação Médica, Visita de Médico...).
+EVOLUCAO_MEDICA = ("(UPPER(e.SCSPECIALITYNAME) LIKE '%MEDIC%' OR UPPER(e.SCSPECIALITYNAME) LIKE '%MÉDIC%' "
+                   "OR UPPER(e.SCSPECIALITYNAME) LIKE '%FISIATR%')")
+
+_EVOLUCAO_ADMISSAO = f"""
+SELECT a.ID                                   AS id_admissao,
+       a.IDPATIENT                            AS id_paciente,
+       'P' || a.IDPATIENT                     AS paciente_codigo,
+       NVL(hp.NAME, '(sem unidade)')          AS unidade,
+       a.ADMISSIONTYPE                        AS tipo,
+       NVL(op.NAME, '(sem entidade)')         AS operadora,
+       a.CHECKINDATE                          AS entrada,
+       a.CHECKOUTDATE                         AS saida
+  FROM CAPADMISSION a
+  LEFT JOIN GLBHEALTHPROVDEP d ON d.ID = a.IDHEALTHPROVDEP
+  LEFT JOIN GLBHEALTHPROVIDER hp ON hp.ID = d.IDHEALTHPROVIDER
+  LEFT JOIN GLBENTERPRISE op ON op.ID = a.IDENTERPRISE
+ WHERE {{filtro}}"""
+
+# Admissão ativa em algum momento do período (mesma regra do censo da ocupação).
+_ADMISSAO_NO_PERIODO = (f"a.STATUS IN (1, 2) AND a.ADMISSIONTYPE IN (0, 1, 3) AND a.CHECKINDATE < :DT_FIM "
+                        f"AND (a.CHECKOUTDATE >= :DT_INI OR (a.CHECKOUTDATE IS NULL AND a.STATUS = 1)) "
+                        f"AND (:TIPO IS NULL OR a.ADMISSIONTYPE = :TIPO) AND {FILTRO_PROVIDER}")
+
+# Uma linha por admissão: contagens do período e as três pendências por regra --
+# (1) nenhuma evolução médica; (2) intercorrência sem evolução médica do dia dela
+# até 48 h depois; (3) prescrição médica sem evolução médica de D-1 a D+1.
+SQL_EVOLUCAO_PACIENTES = f"""
+WITH adm AS ({_EVOLUCAO_ADMISSAO.format(filtro=_ADMISSAO_NO_PERIODO)}),
+ev AS (
+    SELECT e.IDADMISSION, e.STARTDATE, CASE WHEN {EVOLUCAO_MEDICA} THEN 1 ELSE 0 END AS medica
+      FROM CAPEVOLUTION e JOIN adm ON adm.id_admissao = e.IDADMISSION
+     WHERE e.STARTDATE >= :DT_INI - 1 AND e.STARTDATE < :DT_FIM + 2
+),
+evm AS (SELECT IDADMISSION, STARTDATE FROM ev WHERE medica = 1),
+evs AS (
+    SELECT IDADMISSION,
+           SUM(CASE WHEN STARTDATE >= :DT_INI AND STARTDATE < :DT_FIM THEN 1 ELSE 0 END)                AS evolucoes,
+           SUM(CASE WHEN medica = 1 AND STARTDATE >= :DT_INI AND STARTDATE < :DT_FIM THEN 1 ELSE 0 END) AS medicas,
+           MAX(CASE WHEN medica = 1 AND STARTDATE >= :DT_INI AND STARTDATE < :DT_FIM THEN STARTDATE END) AS ultima_medica
+      FROM ev GROUP BY IDADMISSION
+),
+ic AS (
+    SELECT i.IDADMISSION, COUNT(*) AS intercorrencias,
+           SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM evm WHERE evm.IDADMISSION = i.IDADMISSION
+                                        AND evm.STARTDATE >= TRUNC(i.STARTDATE) AND evm.STARTDATE < i.STARTDATE + 2)
+                    THEN 1 ELSE 0 END) AS interc_sem_evolucao
+      FROM CAPINTERCURRENT i JOIN adm ON adm.id_admissao = i.IDADMISSION
+     WHERE i.STARTDATE >= :DT_INI AND i.STARTDATE < :DT_FIM
+     GROUP BY i.IDADMISSION
+),
+pr AS (
+    SELECT p.IDADMISSION, COUNT(*) AS prescricoes,
+           SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM evm WHERE evm.IDADMISSION = p.IDADMISSION
+                                        AND evm.STARTDATE >= TRUNC(p.STARTDATE) - 1 AND evm.STARTDATE < TRUNC(p.STARTDATE) + 2)
+                    THEN 1 ELSE 0 END) AS presc_sem_evolucao
+      FROM CAPPRESCRIPTION p JOIN adm ON adm.id_admissao = p.IDADMISSION
+     WHERE p.STARTDATE >= :DT_INI AND p.STARTDATE < :DT_FIM AND NVL(p.IDPROFMEDICAL, 0) <> 0
+     GROUP BY p.IDADMISSION
+)
+SELECT adm.*,
+       ROUND(LEAST(NVL(adm.saida, :DT_FIM), :DT_FIM) - GREATEST(adm.entrada, :DT_INI), 1) AS dias_no_periodo,
+       NVL(evs.evolucoes, 0) AS evolucoes, NVL(evs.medicas, 0) AS evolucoes_medicas, evs.ultima_medica,
+       NVL(ic.intercorrencias, 0) AS intercorrencias, NVL(ic.interc_sem_evolucao, 0) AS interc_sem_evolucao,
+       NVL(pr.prescricoes, 0) AS prescricoes, NVL(pr.presc_sem_evolucao, 0) AS presc_sem_evolucao
+  FROM adm
+  LEFT JOIN evs ON evs.IDADMISSION = adm.id_admissao
+  LEFT JOIN ic ON ic.IDADMISSION = adm.id_admissao
+  LEFT JOIN pr ON pr.IDADMISSION = adm.id_admissao
+ ORDER BY adm.unidade, adm.id_admissao
+"""
+
+SQL_EVOLUCAO_ADMISSAO = _EVOLUCAO_ADMISSAO.format(filtro="a.ID = :ID")
+
+# Cabeçalho das evoluções do período, sem nome nem documento do profissional.
+SQL_EVOLUCAO_LISTA = f"""
+SELECT e.ID                                     AS id_evolucao,
+       e.STARTDATE                              AS data,
+       NVL(e.SCSPECIALITYNAME, '(sem especialidade)') AS especialidade,
+       CASE WHEN {EVOLUCAO_MEDICA} THEN 1 ELSE 0 END AS medica,
+       e.SIGNED                                 AS assinada,
+       e.IDTEMPLATE                             AS id_template,
+       t.NAME                                   AS formulario,
+       REPLACE(t.TABLENAME, '*', '')            AS tabela
+  FROM CAPEVOLUTION e
+  LEFT JOIN GLBTEMPLATE t ON t.ID = e.IDTEMPLATE
+ WHERE e.IDADMISSION = :ID AND e.STARTDATE >= :DT_INI AND e.STARTDATE < :DT_FIM
+ ORDER BY e.STARTDATE, e.ID
+"""
+
+SQL_EVOLUCAO_INTERCORRENCIAS = f"""
+SELECT i.ID AS id_intercorrencia, i.STARTDATE AS inicio, i.ENDDATE AS fim, i.STATUS AS status,
+       NVL(cl.CLASSIFICATION, '(sem classificação)') AS classificacao,
+       f.INTERCURRENTLEVEL AS nivel,
+       CASE WHEN EXISTS (SELECT 1 FROM CAPEVOLUTION e WHERE e.IDADMISSION = i.IDADMISSION AND {EVOLUCAO_MEDICA}
+                            AND e.STARTDATE >= TRUNC(i.STARTDATE) AND e.STARTDATE < i.STARTDATE + 2)
+            THEN 0 ELSE 1 END AS sem_evolucao
+  FROM CAPINTERCURRENT i
+  LEFT JOIN CAPINTERCLASSIF cl ON cl.ID = i.IDINTERCLASSIF
+  LEFT JOIN CAPINTERCURRENTCFG f ON f.ID = i.IDINTERCURRENTCFG
+ WHERE i.IDADMISSION = :ID AND i.STARTDATE >= :DT_INI AND i.STARTDATE < :DT_FIM
+ ORDER BY i.STARTDATE
+"""
+
+SQL_EVOLUCAO_PRESCRICOES = f"""
+SELECT p.ID AS id_prescricao, p.STARTDATE AS inicio, p.ENDDATE AS fim, p.MEDICALSIGNED AS assinada,
+       p.EMERGENCY AS emergencia,
+       CASE WHEN EXISTS (SELECT 1 FROM CAPEVOLUTION e WHERE e.IDADMISSION = p.IDADMISSION AND {EVOLUCAO_MEDICA}
+                            AND e.STARTDATE >= TRUNC(p.STARTDATE) - 1 AND e.STARTDATE < TRUNC(p.STARTDATE) + 2)
+            THEN 0 ELSE 1 END AS sem_evolucao
+  FROM CAPPRESCRIPTION p
+ WHERE p.IDADMISSION = :ID AND p.STARTDATE >= :DT_INI AND p.STARTDATE < :DT_FIM AND NVL(p.IDPROFMEDICAL, 0) <> 0
+ ORDER BY p.STARTDATE
+"""
+
+# Desfecho da admissão (CAPADMISSION.CHECKOUTCOND). Sem tabela de códigos no ERP: inferido em out/2026
+# pelo comportamento e confirmado pelo time -- 1 sempre tem hospital de destino (IDHOSPITALCHECKOUT);
+# 2 nunca tem admissão seguinte; 20 reabre home care em até 15 dias (128 de 145).
+DESFECHOS = {1: "internação hospitalar", 2: "óbito", 3: "alta", 20: "troca de modalidade / readmissão"}
+
+# Admissões do paciente nos 12 meses até o fim do período, com o desfecho de cada uma
+SQL_EVOLUCAO_HISTORICO = """
+SELECT a.ID AS id_admissao, a.ADMISSIONTYPE AS tipo, a.CHECKINDATE AS entrada, a.CHECKOUTDATE AS saida,
+       a.CHECKOUTCOND AS desfecho
+  FROM CAPADMISSION a
+ WHERE a.IDPATIENT = :ID AND a.CHECKINDATE < :DT_FIM
+   AND (a.CHECKOUTDATE IS NULL OR a.CHECKOUTDATE >= ADD_MONTHS(:DT_FIM, -12))
+ ORDER BY a.CHECKINDATE
+"""
+
+# Agenda do ambulatório (CAPCONSULT): sessão agendada, se o paciente chegou e se há evolução.
+# Não há autorização no ERP para o ambulatório (AUTHORIZEDQTY = 0, sem orçamento em 2026).
+SQL_EVOLUCAO_SESSOES = """
+SELECT c.ID AS id_sessao, c.AGENDASTARTDATE AS data, NVL(c.CANCELED, 0) AS cancelada,
+       CASE WHEN c.PATIENTARRIVEDATE IS NOT NULL THEN 1 ELSE 0 END AS compareceu,
+       CASE WHEN c.IDEVOLUTION IS NOT NULL THEN 1 ELSE 0 END AS com_evolucao
+  FROM CAPCONSULT c
+ WHERE c.IDADMISSION = :ID AND c.AGENDASTARTDATE >= :DT_INI AND c.AGENDASTARTDATE < :DT_FIM
+ ORDER BY c.AGENDASTARTDATE
+"""
+
+# Rótulo e domínio de cada campo dos formulários. FORMALDOMAIN: 'value|10|Eupneico|20|Taquipneico'
+# ou 'positional|0|não|1|sim' (pares código|rótulo depois do primeiro token).
+SQL_EVOLUCAO_ROTULOS = """
+SELECT UPPER(REPLACE(v.TABLENAME, '*', '')) AS tabela, UPPER(v.NAME) AS campo,
+       NVL(v.VARIABLEDESCRIPTION, v.PRINTVARNAME) AS rotulo,
+       v.ATTRIBTYPE AS tipo, v.VARIABLEISCHECKBOX AS checkbox, v.FORMALDOMAIN AS dominio
+  FROM GLBTEMPLATEVAR v
+ WHERE UPPER(REPLACE(v.TABLENAME, '*', '')) IN (:TABELAS)
+"""
+
 CONSULTAS = {
     "paciente_nome": SQL_PACIENTE_NOME,
     "unidades_faturam": SQL_UNIDADES_FATURAM,
@@ -890,6 +1189,7 @@ CONSULTAS = {
     "contas_detalhe": SQL_CONTAS_DETALHE,
     "faturamento_por_operadora": SQL_FATURAMENTO_POR_OPERADORA,
     "contas_em_aberto": SQL_CONTAS_EM_ABERTO,
+    "exportadas_por_guia": SQL_EXPORTADAS_POR_GUIA,
     "orcamentos_por_status": SQL_ORCAMENTOS_POR_STATUS,
     "gap_resumo": SQL_GAP_RESUMO,
     "glosa_por_unidade": SQL_GLOSA_POR_UNIDADE,
@@ -912,6 +1212,9 @@ CONSULTAS = {
     "conta_paciente_linha": SQL_CONTA_PACIENTE_LINHA,
     "conta_paciente_irmaos": SQL_CONTA_PACIENTE_IRMAOS,
     "conta_paciente_itens": SQL_CONTA_PACIENTE_ITENS,
+    "guias_por_orcamento": SQL_GUIAS_POR_ORCAMENTO,
+    "conta_paciente_por_conta": SQL_CONTA_PACIENTE_POR_CONTA,
+    "conta_paciente_itens_orcamento": SQL_CONTA_PACIENTE_ITENS_ORCAMENTO,
     "orcamentos_valor": SQL_ORCAMENTOS_VALOR,
     "conciliacao_protocolos": SQL_CONCILIACAO_PROTOCOLOS,
     "conciliacao_protocolos_work": SQL_CONCILIACAO_PROTOCOLOS_WORK,
@@ -924,4 +1227,15 @@ CONSULTAS = {
     "ocupacao_atual": SQL_OCUPACAO_ATUAL,
     "ocupacao_historico": SQL_OCUPACAO_HISTORICO,
     "pacientes_em_atendimento": SQL_PACIENTES_EM_ATENDIMENTO,
+    **{f"med_por_{nome}": SQL_MED_CONSUMO.replace("{dimensao}", expr) for nome, expr in DIMENSOES_MED.items()},
+    "med_estoque_areas": SQL_MED_ESTOQUE_AREAS,
+    "med_estoque_itens": SQL_MED_ESTOQUE_ITENS,
+    "evolucao_pacientes": SQL_EVOLUCAO_PACIENTES,
+    "evolucao_admissao": SQL_EVOLUCAO_ADMISSAO,
+    "evolucao_lista": SQL_EVOLUCAO_LISTA,
+    "evolucao_intercorrencias": SQL_EVOLUCAO_INTERCORRENCIAS,
+    "evolucao_prescricoes": SQL_EVOLUCAO_PRESCRICOES,
+    "evolucao_rotulos": SQL_EVOLUCAO_ROTULOS,
+    "evolucao_historico": SQL_EVOLUCAO_HISTORICO,
+    "evolucao_sessoes": SQL_EVOLUCAO_SESSOES,
 }

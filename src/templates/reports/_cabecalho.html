@@ -15,7 +15,7 @@
   </div>
   <nav class="rp-abas" aria-label="Relatórios">
     {% for aba in abas %}
-    <a href="{{ aba.href }}{% if aba.slug != 'auditoria' and filtros is defined and filtros and filtros.mes %}?mes={{ filtros.mes }}{% endif %}" class="rp-aba{% if aba.ativo or aba.href == caminho %} ativo{% endif %}">
+    <a href="{{ aba.href }}{% if aba.slug != 'auditoria' and filtros is defined and filtros %}{% if filtros.query_periodo %}?{{ filtros.query_periodo }}{% elif filtros.mes %}?mes={{ filtros.mes }}{% endif %}{% endif %}" class="rp-aba{% if aba.ativo or aba.href == caminho %} ativo{% endif %}">
       <i data-lucide="{{ aba.icone }}"></i>{{ aba.titulo }}
     </a>
     {% endfor %}

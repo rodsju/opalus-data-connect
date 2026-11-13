@@ -1,0 +1,37 @@
+{% import "reports/_macros.html" as rp %}
+{% if bloco.sem_conciliacao %}
+<div class="rp-alerta rp-alerta--erro"><i data-lucide="unplug"></i><div><b>Conciliação indisponível</b> — sem acesso ao Postgres, não dá para saber quais guias já têm retorno.</div></div>
+{% else %}
+<div class="rp-alerta rp-alerta--aviso"><i data-lucide="inbox"></i><div>
+  Conciliada = guia que voltou no <b>XML</b> ({% if bloco.arquivos %}{{ bloco.arquivos }} arquivo(s){% if bloco.ultimo %}, o mais recente de {{ bloco.ultimo.strftime('%d/%m/%Y') }}{% endif %}{% else %}nenhum carregado{% endif %})
+  ou na <b>planilha de glosa</b> ({% if bloco.planilha_referencia %}base de {{ bloco.planilha_referencia.strftime('%d/%m/%Y') }}{% else %}nenhuma carregada{% endif %}).
+  A planilha só traz guia glosada: guia paga sem glosa só sai de "sem retorno" com o XML — <a href="/conciliacao/tiss">carregue os demonstrativos</a>.
+</div></div>
+{% endif %}
+<div class="rp-destaques">
+  <span><b>{{ bloco.total.sem_retorno | moeda_curta }}</b> sem retorno ({{ bloco.total.pct_sem_retorno | pct }} do exportado)</span>
+  <span><b>{{ bloco.total.guias_sem_retorno | valor('int') }}</b> de {{ bloco.total.guias | valor('int') }} guias</span>
+  <span><b>{{ bloco.origens.xml | valor('int') }}</b> guias conciliadas pelo XML · <b>{{ bloco.origens.planilha | valor('int') }}</b> pela planilha</span>
+  {% if bloco.total.divergente %}<span><b>{{ bloco.total.divergente | moeda_curta }}</b> com retorno divergente</span>{% endif %}
+</div>
+<div class="rp-duo">
+  <div class="rp-duo__graf">{{ rp.grafico(b.slug, bloco.grafico, bloco.altura) }}</div>
+  <div class="rp-duo__tab">
+    <table class="rp-tabela">
+      <thead><tr><th>Operadora</th><th class="num">Guias</th><th class="num">Exportado</th><th class="num">Sem retorno</th><th class="num" title="Sem retorno ÷ exportado da operadora">% sem retorno</th><th class="num">Divergente</th></tr></thead>
+      <tbody>
+        {% for l in bloco.linhas %}
+        <tr{% if l.outros %} class="rp-outros"{% endif %}>
+          <td>{{ l.operadora }}</td>
+          <td class="num">{{ l.guias | valor('int') }}</td>
+          <td class="num">{{ l.exportado | moeda_curta }}</td>
+          <td class="num">{{ l.sem_retorno | moeda_curta }}</td>
+          {{ rp.share(l.pct_sem_retorno, 'coral') }}
+          <td class="num">{{ l.divergente | moeda_curta if l.divergente else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td>Total</td><td class="num">{{ bloco.total.guias | valor('int') }}</td><td class="num">{{ bloco.total.exportado | moeda_curta }}</td><td class="num">{{ bloco.total.sem_retorno | moeda_curta }}</td><td class="num">{{ bloco.total.pct_sem_retorno | pct }}</td><td class="num">{{ bloco.total.divergente | moeda_curta if bloco.total.divergente else '—' }}</td></tr></tfoot>
+    </table>
+  </div>
+</div>

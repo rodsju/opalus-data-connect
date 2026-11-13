@@ -23,6 +23,18 @@ def periodo(mes):
     return inicio, fim
 
 
+def intervalo(de, ate):
+    """'2026-06-10', '2026-06-20' -> (2026-06-10, 2026-06-21). Fim EXCLUSIVO, como em periodo()."""
+    try:
+        inicio = datetime.date.fromisoformat((de or "").strip())
+        ultimo = datetime.date.fromisoformat((ate or "").strip())
+    except ValueError as falha:
+        raise PeriodoInvalido("intervalo precisa de duas datas no formato AAAA-MM-DD") from falha
+    if ultimo < inicio:
+        raise PeriodoInvalido("a data final é anterior à inicial")
+    return inicio, ultimo + datetime.timedelta(days=1)
+
+
 def mes_padrao(hoje=None):
     """Mês anterior ao corrente: o último que já fechou competência."""
     hoje = hoje or datetime.date.today()
@@ -46,17 +58,28 @@ class Filtros:
     """
 
     TIPOS = {"": "Todos os tipos", "0": "Hospital de transição", "1": "Home care", "3": "Ambulatorial"}
+    # Categoria do material (SCCCODE.IDTABLE -> SCCTABLE), só nos relatórios com filtro_categoria
+    CATEGORIAS = {"55": "Medicamentos", "56": "Mat. Enfermagem", "71": "Dietas", "todas": "Todas as categorias"}
+    CATEGORIA_PADRAO = "55"
 
-    def __init__(self, mes, unidade="", convenio="", motivo="", tipo=""):
-        # mes vazio = todas as competências (só relatórios com periodo_opcional)
-        self.mes = (mes or "").strip()
-        self.inicio, self.fim = periodo(self.mes) if self.mes else (None, None)
+    def __init__(self, mes, unidade="", convenio="", motivo="", tipo="", de="", ate="", categoria=""):
+        # mes vazio = todas as competências (só relatórios com periodo_opcional).
+        # de/ate (datas) = intervalo personalizado: substitui a competência.
+        self.de, self.ate = (de or "").strip(), (ate or "").strip()
+        if self.de or self.ate:
+            self.mes = ""
+            self.inicio, self.fim = intervalo(self.de, self.ate)
+        else:
+            self.mes = (mes or "").strip()
+            self.inicio, self.fim = periodo(self.mes) if self.mes else (None, None)
         self.unidade = (unidade or "").strip()
         self.convenio = (convenio or "").strip()
         self.motivo = (motivo or "").strip()
         # Tipo de atendimento: código de CAPADMISSION.ADMISSIONTYPE ("" = todos)
         tipo = str("" if tipo is None else tipo).strip()
         self.tipo = tipo if tipo in self.TIPOS else ""
+        categoria = str(categoria or "").strip()
+        self.categoria = categoria if categoria in self.CATEGORIAS else self.CATEGORIA_PADRAO
         self._memo = {}
         self._trava = threading.Lock()
 
@@ -65,11 +88,30 @@ class Filtros:
         return self.TIPOS.get(self.tipo, "")
 
     @property
+    def rotulo_categoria(self):
+        return self.CATEGORIAS[self.categoria]
+
+    @property
+    def personalizado(self):
+        return bool(self.de)
+
+    @property
     def rotulo_periodo(self):
+        if self.personalizado:
+            ultimo = self.fim - datetime.timedelta(days=1)
+            return f"{self.inicio:%d/%m/%Y} a {ultimo:%d/%m/%Y}"
         return rotulo_mes(self.inicio) if self.inicio else "todas"
 
+    @property
+    def query_periodo(self):
+        """Período como querystring, para os links que mantêm o recorte."""
+        if self.personalizado:
+            return f"de={self.de}&ate={self.ate}"
+        return f"mes={self.mes}" if self.mes else ""
+
     def params(self, com_periodo=True):
-        binds = {"UNIDADE": self.unidade or None, "TIPO": int(self.tipo) if self.tipo else None}
+        binds = {"UNIDADE": self.unidade or None, "TIPO": int(self.tipo) if self.tipo else None,
+                 "CATEGORIA": None if self.categoria == "todas" else int(self.categoria)}
         if self.convenio:
             binds["CONVENIO"] = self.convenio
         if self.motivo:

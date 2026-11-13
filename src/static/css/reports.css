@@ -157,6 +157,13 @@
 /* Consultas têm muitos filtros: a barra rola junto, sem cobrir a tabela */
 .rp-filtros--estatica { position: static; box-shadow: none; }
 
+/* Competência ou intervalo personalizado (o "+" alterna) */
+.rp-periodo { display: flex; align-items: flex-end; gap: var(--space-3); }
+.rp-periodo[data-personalizado="sim"] .rp-periodo__mes,
+.rp-periodo[data-personalizado="nao"] .rp-periodo__data { display: none; }
+.rp-periodo__data { min-width: 150px; }
+.rp-btn--icone { width: 40px; padding: 0; justify-content: center; }
+
 .rp-campo { display: flex; flex-direction: column; gap: var(--space-2); min-width: 160px; }
 .rp-campo--largo { min-width: 280px; }
 
@@ -436,6 +443,8 @@
   color: var(--navy-800);
   font-variant-numeric: tabular-nums;
 }
+
+.rp-kpi__sinal { color: var(--tom); }
 
 .rp-kpi__barra {
   position: relative;
@@ -718,7 +727,7 @@
 .rp-chip .pac__nome { color: inherit; }
 .rp-duo--meio { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 @media (max-width: 900px) { .rp-duo--meio { grid-template-columns: minmax(0, 1fr); } }
-/* Consulta com muitas colunas: usa a largura inteira da página */
+/* Consultas (listas e detalhes): sempre a largura inteira da página */
 .rp-wrap--larga { max-width: none; }
 /* Item alterado pela pré-auditoria */
 .rp-linha--pre td { background: var(--vivid-violet-soft, #f1eafd); }

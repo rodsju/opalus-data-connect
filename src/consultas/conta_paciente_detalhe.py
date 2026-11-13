@@ -10,7 +10,7 @@ import concurrent.futures
 
 from .. import layout
 from ..reports import bloco_pre_auditoria, comum, fonte, orcamento_risco
-from . import conta_paciente, lista
+from . import conta_paciente, historia, lista
 
 
 def _pg(nome, params, padrao):
@@ -52,17 +52,14 @@ def montar(id_conta, id_admissao, id_orcamento):
     chave_pg = {"CONTA": id_conta, "ADMISSAO": id_admissao or None}
     tiss_guias = _pg("cp_tiss_guias", chave_pg, []) if id_admissao else []
     tiss_itens = _pg("cp_tiss_itens", chave_pg, []) if id_admissao else []
-    grupos = _pg("cp_glosas", {"CONTAS": [id_conta]}, [])
-    glosas = {((g["id_conta"], "A", g["id_admissao"]) if g["id_admissao"] else (g["id_conta"], "P", g["id_paciente"])): g
-              for g in grupos}
     orcamento = dados["orcamento"][0] if dados.get("orcamento") else None
     if orcamento:
         orcamento = {**orcamento, **{k: conta_paciente._data(orcamento.get(k)) for k in ("inicio", "fim", "validade_senha")}}
     valores = {id_orcamento: {"orcado": orcamento["orcado"], "situacao_orcamento": orcamento["situacao"],
                               "orcamento_inicio": orcamento["inicio"], "orcamento_fim": orcamento["fim"]}} \
         if orcamento else {}
-    # Irmãos primeiro, para a glosa cair na primeira linha do paciente como na lista
-    todas = conta_paciente.juntar(dados["irmaos"], valores, glosas)
+    # Com os irmãos, para a glosa da guia ser repartida entre os orçamentos como na lista
+    todas = conta_paciente.juntar(dados["irmaos"], valores, historia.retornos({id_conta}))
     linha = next(l for l in todas if (l.get("id_orcamento") or 0) == id_orcamento)
     linha["data_entrega"] = conta_paciente._data(linha.get("data_entrega"))
     textos = bloco_pre_auditoria.descricoes()
@@ -98,7 +95,7 @@ def montar(id_conta, id_admissao, id_orcamento):
             ("Bruto lançado", t("bruto"), "total", "itens desta conta, paciente e orçamento"),
             ("Incluso em pacote", t("pacote"), "neg", "coberto por diária/pacote"),
             ("Pré-auditoria", t("pre_auditoria"), "neg", "cortado antes do envio"),
-            ("Faturamento", t("faturamento_grupo"), "total", "o que foi cobrado"),
+            ("Faturável", t("faturamento_grupo"), "total", "o que foi cobrado"),
             ("Particular", t("particular"), "neg", "cobrado do paciente"),
             ("Fatura operadora", t("fatura_operadora"), "total", "vai na nota para a operadora"),
         ]),

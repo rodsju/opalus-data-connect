@@ -42,11 +42,18 @@ def test_regras_da_lista():
     assert orcamento_risco.nivel([]) is None
 
 
-def test_senha_vencida_so_com_conta_aberta():
+def test_senha_vencida_pelo_criterio():
     hoje = d(2026, 9, 1)
-    vencida = orc(validade_senha=d(2026, 8, 1), fim=d(2026, 7, 31))
-    assert [r["regra"] for r in orcamento_risco.avaliar(vencida, hoje=hoje)] == ["senha_vencida"]
-    assert orcamento_risco.avaliar({**vencida, "contas_abertas": 0}, hoje=hoje) == []
+    vencida = orc(validade_senha=d(2026, 8, 1), fim=d(2026, 7, 31), a_exportar=500)
+    regras = lambda o, c=orcamento_risco.PERIODO_ATENDIDO: [  # noqa: E731
+        r["regra"] for r in orcamento_risco.avaliar(o, hoje=hoje, criterio=c)]
+    # Período atendido (padrão): só se há faturável a exportar em conta iniciada depois da validade
+    assert regras(vencida) == []
+    assert regras({**vencida, "aberta_apos_validade": True}) == ["senha_vencida"]
+    # Data de envio: basta haver faturável a exportar
+    assert regras(vencida, orcamento_risco.DATA_ENVIO) == ["senha_vencida"]
+    # Nada a exportar (ex.: conta aberta com R$ 0): nenhum dos dois
+    assert regras({**vencida, "a_exportar": 0}, orcamento_risco.DATA_ENVIO) == []
 
 
 def test_comparar_itens_classifica_os_desvios():
@@ -61,19 +68,36 @@ def test_comparar_itens_classifica_os_desvios():
     assert riscos == {"faturado sem orçar", "qtd acima", "preço diferente"}
 
 
+def hist(**kw):
+    from src.consultas import historia
+    h = {**historia.vazia(), "retorno": "não exportado", **kw}
+    return {**h, "glosado": historia.GLOSADO.get(h["retorno"])}
+
+
 def test_lista_filtra_por_foco_e_mostra_so_codigo():
-    orcamentos = [orc(id_orcamento=1), orc(id_orcamento=2, contas_abertas=0, id_admissao=20),
-                  orc(id_orcamento=3, situacao="Cancelado", contas=0, contas_abertas=0)]
-    glosas = [{"id_admissao": 20, "competencia": d(2026, 5, 1), "glosa": 30, "motivo": "1705", "linhas": 1}]
+    orcamentos = [orc(id_orcamento=1), orc(id_orcamento=2, id_admissao=20),
+                  orc(id_orcamento=3, situacao="Cancelado", contas=0, contas_abertas=0),
+                  orc(id_orcamento=4, validade_senha=d(2026, 5, 31))]
+    historias = {
+        1: hist(faturamento_grupo=100),  # nada exportado
+        2: hist(faturamento_grupo=100, exportado=100, retorno="glosado", glosa=30),
+        # caso 223406: exportado inteiro + conta aberta com R$ 0 -> não é "a prevenir", senha não pesa
+        4: hist(faturamento_grupo=100, exportado=100, retorno="sem retorno"),
+    }
     por_foco = {f: [l["id_orcamento"] for l in orcamentos_detalhe.montar_lista(
-        orcamentos, glosas, {}, set(), set(), f, hoje=d(2026, 9, 1))["linhas"]]
+        orcamentos, historias, {}, set(), set(), f, hoje=d(2026, 9, 1))["linhas"]]
         for f in orcamentos_detalhe.FOCOS}
     assert por_foco["prevenir"] == [1]
-    assert por_foco["faturados"] == [2]
+    assert sorted(por_foco["faturados"]) == [2, 4]
     assert por_foco["com_glosa"] == [2]
-    assert sorted(por_foco["todos"]) == [1, 2, 3]
-    linha = orcamentos_detalhe.montar_lista(orcamentos, glosas, {}, set(), set(), "todos")["linhas"][0]
-    assert linha["paciente_codigo"] == "P99"
+    assert sorted(por_foco["todos"]) == [1, 2, 3, 4]
+    linhas = {l["id_orcamento"]: l for l in orcamentos_detalhe.montar_lista(
+        orcamentos, historias, {}, set(), set(), "todos", hoje=d(2026, 9, 1))["linhas"]}
+    assert linhas[1]["paciente_codigo"] == "P99"
+    # Retorno é por guia: na lista do orçamento vale o status, não o valor
+    assert linhas[2]["faturado"] == 100 and linhas[2]["glosado"] == "sim" and linhas[4]["glosado"] == "sem retorno"
+    assert linhas[3]["glosado"] is None and linhas[3]["exportado_rotulo"] == "—"  # sem conta
+    assert not any(r["regra"] == "senha_vencida" for r in linhas[4]["riscos"])
 
 
 def contexto():
@@ -160,14 +184,15 @@ def test_conta_paciente_um_orcamento_por_linha_e_glosa_uma_vez():
             300: {"orcado": 1000, "situacao_orcamento": "Liberado", "orcamento_inicio": None, "orcamento_fim": None}}
     g = {"glosa": 80, "recuperado": 30, "perda": 10, "faturado_planilha": 900, "motivos": "1705",
          "status_glosa": "PAGO", "situacao_cruzamento": "CONCILIADO"}
-    l = conta_paciente.juntar(contas, orcs, {(86751, "A", 31203): g, (86751, "P", 6): {**g, "glosa": 7}})
+    ret = {"glosas": {(86751, "A", 31203): g, (86751, "P", 6): {**g, "glosa": 7}}, "xml": {}, "itens": {}}
+    l = conta_paciente.juntar(contas, orcs, ret)
     assert [x["orcado"] for x in l] == [20925.35, 17482.15, None, 1000]
     assert l[0]["orcamento_rotulo"] == "01/08 a 13/08 · Autorizado (operadora)"
     assert l[2]["orcamento_rotulo"] == "itens sem orçamento"
-    # glosa da admissão só na primeira linha dela, com a nota; a do paciente 6 casou pelo total
-    assert [x["glosa"] for x in l] == [80, None, None, 7]
-    assert l[0]["glosa_nota"] == "(planilha) do paciente na conta (todos os orçamentos)"
-    assert l[3]["glosa_nota"] == "(planilha) 1705"
+    # glosa da guia rateada pelo faturável entre as linhas dela; a do paciente 6 casou pelo total
+    assert round(sum(x["glosa"] for x in l[:3]), 2) == 80 and l[0]["glosa"] > l[1]["glosa"] > l[2]["glosa"]
+    assert l[0]["glosa_rateada"] and l[0]["glosa_nota"] == "glosado (planilha) 1705 · rateada pelo faturável (3 linhas)"
+    assert l[3]["glosa"] == 7 and l[3]["glosa_nota"] == "glosado (planilha) 1705" and not l[3]["glosa_rateada"]
     assert l[0]["orcamentos_na_conta"] == 2 and l[3]["orcamentos_na_conta"] == 1
     kpis = conta_paciente.resumo(l)
     assert round(kpis[0]["valor"], 2) == 39407.5 and kpis[4]["valor"] == 87
@@ -177,8 +202,8 @@ def test_conta_paciente_um_orcamento_por_linha_e_glosa_uma_vez():
     assert passa(1, destaque="varios") and not passa(3, destaque="varios")
     assert passa(3, pre="com") and passa(0, pre="sem") and not passa(0, pre="com")
     assert passa(0, desconto="sem") and not passa(0, desconto="com")
-    # glosa e desfecho são do paciente na conta: a 2ª linha do paciente (sem glosa exibida) também passa
-    assert l[1]["glosa"] is None and passa(1, glosa="com") and passa(1, desfecho="ambos")
+    # glosa e desfecho são do paciente na conta: valem em todas as linhas dele
+    assert passa(1, glosa="com") and passa(1, desfecho="ambos")
     assert not passa(1, glosa="sem") and not passa(1, desfecho="aberto")
 
 
@@ -195,11 +220,12 @@ def test_faturas_agrupa_as_linhas_da_conta_do_paciente():
             247688: {"orcado": 50, "situacao_orcamento": "Liberado", "orcamento_inicio": None, "orcamento_fim": None}}
     g = {"glosa": 30, "recuperado": 10, "perda": 0, "faturado_planilha": 90, "motivos": "1705", "status_glosa": "PAGO",
          "situacao_cruzamento": "CONCILIADO", "notas_planilha": "4655"}
-    linhas = conta_paciente.juntar(contas, orcs, {(86751, "A", 31203): g})
+    linhas = conta_paciente.juntar(contas, orcs, {"glosas": {(86751, "A", 31203): g}, "xml": {}, "itens": {}})
     assert all(l["nota_fiscal"] == "4655" and l["nf_origem"] == "planilha" for l in linhas)
     [f] = faturas.agrupar(linhas)
     assert f["pacientes"] == 2 and f["orcamentos"] == 2 and f["orcado"] == 250  # orçamento distinto conta uma vez
     assert f["faturamento_grupo"] == 270 and f["pre_auditoria"] == 4 and f["glosa"] == 30
+    assert f["exportado"] == 0 and f["exportado_rotulo"] == "não" and f["retorno"] == "glosado"
     assert f["detalhe"] == "/consultas/conta-paciente?mes=2026-08&busca=86751"
     assert faturas._passa(f, {"glosa": "com", "desfecho": "recuperado", "pre": "com"})
     assert not faturas._passa(f, {"desfecho": "perda"})
@@ -215,11 +241,11 @@ def test_nota_fiscal_prefere_erp():
 
 
 def test_rotulo_de_origem_da_glosa():
-    from src.consultas import conta_paciente, registro
+    from src.consultas import historia, registro
 
     assert registro.rotulo_origem("xml") == "(xml)" and registro.rotulo_origem(None) == "(planilha)"
     assert registro.rotulo_origem("planilha/xml") == "(xml/planilha)"
-    assert conta_paciente._rotulo_origem({"origem_glosa": "xml"}) == "(xml)"
+    assert historia.rotulo_origem("xml") == "(xml)"
     l = registro.com_origem({"origem_glosa": "xml", "motivo": "1714", "motivo_planilha": "1705",
                              "motivo_descricao": "VALOR DO SERVIÇO SUPERIOR"})
     assert l["origem_rotulo"] == "(xml)" and l["motivo_nota"] == "Valor do serviço superior · planilha dizia 1705"

@@ -22,16 +22,27 @@ def destino_do_catalogo():
     return f"{partes.hostname}:{partes.port or 5432}{partes.path}"
 
 
-def destino_do_oracle():
+# Origens Oracle checadas na pagina: (titulo, prefixo das variaveis no .env).
+# Cada prefixo le <PREFIXO>_HOST, _PORT, _SERVICE, _USER, _PASSWORD, _SCHEMA e
+# _CLIENT_LIB_DIR.
+ORIGENS_ORACLE = [
+    ("Origem (Oracle)", "ORACLE"),
+    ("Origem Sainte Marie (Oracle, homolog)", "ORACLE_SM"),
+]
+
+_cliente_iniciado = False
+
+
+def destino_do_oracle(prefixo="ORACLE"):
     """host:porta/service da origem. Sem usuario nem senha, como o do catalogo."""
-    host = os.getenv("ORACLE_HOST")
+    host = os.getenv(f"{prefixo}_HOST")
     if not host:
         return "não configurado"
-    porta = os.getenv("ORACLE_PORT") or "1521"
-    return f"{host}:{porta}/{os.getenv('ORACLE_SERVICE') or '?'}"
+    porta = os.getenv(f"{prefixo}_PORT") or "1521"
+    return f"{host}:{porta}/{os.getenv(f'{prefixo}_SERVICE') or '?'}"
 
 
-def checar_oracle():
+def checar_oracle(prefixo="ORACLE"):
     """Abre uma conexao na origem e pergunta quem ela acha que somos.
 
     `SELECT USER FROM dual` em vez de `SELECT 1`: alem de provar que o listener
@@ -42,25 +53,29 @@ def checar_oracle():
     Falhar aqui NAO derruba o status HTTP -- ver gerar_pagina().
     """
     faltando = [
-        chave
-        for chave in ("ORACLE_HOST", "ORACLE_SERVICE", "ORACLE_USER", "ORACLE_PASSWORD")
-        if not os.getenv(chave)
+        f"{prefixo}_{sufixo}"
+        for sufixo in ("HOST", "SERVICE", "USER", "PASSWORD")
+        if not os.getenv(f"{prefixo}_{sufixo}")
     ]
     if faltando:
         return False, f"Sem configuração: falta {', '.join(faltando)} no .env.", None
 
     import oracledb
 
+    global _cliente_iniciado
     inicio = time.perf_counter()
     conexao = None
     try:
-        lib_dir = os.getenv("ORACLE_CLIENT_LIB_DIR")
-        if lib_dir:
+        # O modo thick so pode ser ligado uma vez por processo, e vale para
+        # todas as conexoes dali em diante.
+        lib_dir = os.getenv(f"{prefixo}_CLIENT_LIB_DIR")
+        if lib_dir and not _cliente_iniciado:
             oracledb.init_oracle_client(lib_dir=lib_dir)
+            _cliente_iniciado = True
         conexao = oracledb.connect(
-            user=os.getenv("ORACLE_USER"),
-            password=os.getenv("ORACLE_PASSWORD"),
-            dsn=destino_do_oracle(),
+            user=os.getenv(f"{prefixo}_USER"),
+            password=os.getenv(f"{prefixo}_PASSWORD"),
+            dsn=destino_do_oracle(prefixo),
             tcp_connect_timeout=ORACLE_TIMEOUT,
         )
         conexao.call_timeout = ORACLE_TIMEOUT * 1000
@@ -69,7 +84,7 @@ def checar_oracle():
             usuario_sessao = cursor.fetchone()[0]
     except Exception as e:
         ms = (time.perf_counter() - inicio) * 1000
-        logger.error("Oracle nao respondeu em %s: %s", destino_do_oracle(), e)
+        logger.error("Oracle %s nao respondeu em %s: %s", prefixo, destino_do_oracle(prefixo), e)
         # O oracledb costuma anexar linhas de ajuda e um link; a primeira linha
         # e a que diz o que aconteceu.
         return False, str(e).strip().splitlines()[0], ms
@@ -78,11 +93,34 @@ def checar_oracle():
             conexao.close()
 
     ms = (time.perf_counter() - inicio) * 1000
-    schema = os.getenv("ORACLE_SCHEMA")
+    schema = os.getenv(f"{prefixo}_SCHEMA")
     detalhe = f"Conectado como {usuario_sessao}."
     if schema:
         detalhe += f" Schema mapeado: {schema}."
     return True, detalhe, ms
+
+
+def checar_bigquery():
+    """Conta as contas de CAPPAYMENT no dataset configurado (BQ_PROJECT/BQ_DATASET).
+
+    Prova de uma vez que o ADC vale, que a conta pode rodar job e que o dataset
+    tem as tabelas do ERP. Falhar aqui NAO derruba o status HTTP.
+    """
+    from .reports import fonte_bq
+
+    inicio = time.perf_counter()
+    try:
+        cfg = fonte_bq._config()
+        cfg["timeout"] = min(cfg["timeout"], 15)
+        linha = fonte_bq.executar(fonte_bq.qualificar("SELECT COUNT(*) AS n FROM {ds}.CAPPAYMENT", cfg), {}, cfg)[0]
+    except Exception as e:  # noqa: BLE001 -- vira detalhe na pagina
+        ms = (time.perf_counter() - inicio) * 1000
+        motivo = getattr(e, "motivo", None) or str(e).strip().splitlines()[0]
+        dica = getattr(e, "dica", "")
+        logger.error("BigQuery nao respondeu em %s: %s", fonte_bq.destino(), e)
+        return False, f"{motivo} — {dica}" if dica else motivo, ms
+    ms = (time.perf_counter() - inicio) * 1000
+    return True, f"{linha['n']:,} contas em {cfg['projeto']}.{cfg['dataset']}.CAPPAYMENT.".replace(",", "."), ms
 
 
 def checar_catalogo():
@@ -118,7 +156,11 @@ def gerar_pagina(usuario=None):
     # catalogo e critico -- e dele que as paginas leem. O Oracle so e preciso na
     # hora de remapear, e fora da VPN ele e inalcancavel por definicao; marcar
     # ele como critico faria a sonda acusar doente um servico que esta servindo.
-    oracle_ok, oracle_detalhe, oracle_ms = checar_oracle()
+    from .reports import fonte_bq
+
+    bq_ok, bq_detalhe, bq_ms = checar_bigquery()
+    # Oracle: legado, a caminho de sair. Aparece, mas nao conta para o alerta.
+    origens = [(titulo, prefixo, *checar_oracle(prefixo)) for titulo, prefixo in ORIGENS_ORACLE]
 
     checagens = [
         {
@@ -135,19 +177,20 @@ def gerar_pagina(usuario=None):
             "detalhe": detalhe,
             "ms": ms,
         },
-        {
-            "titulo": "Origem (Oracle)",
-            "ok": oracle_ok,
-            "critico": False,
-            "detalhe": oracle_detalhe,
-            "ms": oracle_ms,
-        },
+    ]
+    checagens.append(
+        {"titulo": "Origem (BigQuery)", "ok": bq_ok, "critico": False, "detalhe": bq_detalhe, "ms": bq_ms}
+    )
+    checagens += [
+        {"titulo": titulo, "ok": o_ok, "critico": False, "detalhe": o_detalhe, "ms": o_ms}
+        for titulo, _, o_ok, o_detalhe, o_ms in origens
     ]
     config = [
         ("Ambiente", layout.AMBIENTE),
         ("Projeto", layout.PROJETO),
         ("Catálogo", destino_do_catalogo()),
-        ("Origem", destino_do_oracle()),
+        ("Origem (BigQuery)", fonte_bq.destino()),
+        *[(titulo, destino_do_oracle(prefixo)) for titulo, prefixo in ORIGENS_ORACLE],
         ("Usuário identificado", usuario["email"] if usuario else "—"),
     ]
 
@@ -157,7 +200,7 @@ def gerar_pagina(usuario=None):
         usuario,
         "/health",
         catalogo_ok=ok,
-        oracle_ok=oracle_ok,
+        origem_ok=bq_ok,
         checagens=checagens,
         config=config,
     )

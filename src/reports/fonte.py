@@ -2,8 +2,8 @@
 
 Os blocos chamam rodar("contas_por_status", params) e recebem list[dict] com
 chaves em minúsculo. Qual banco responde é decidido aqui, por REPORTS_FONTE:
-"oracle" (default, ao vivo) e, na migração, "bq". Trocar de origem não toca em
-bloco nem template -- só num sql_<fonte>.py com as mesmas chaves.
+"bq" (default, camada bronze do BigQuery -- ver fonte_bq) e "oracle" (legado).
+Trocar de origem não toca em bloco nem template -- só num sql_<fonte>.py com as mesmas chaves.
 """
 
 import logging
@@ -27,12 +27,16 @@ class ConsultaFalhou(Exception):
 
 
 def _backend():
-    fonte = (os.getenv("REPORTS_FONTE") or "oracle").strip().lower()
+    fonte = (os.getenv("REPORTS_FONTE") or "bq").strip().lower()
+    if fonte == "bq":
+        from . import fonte_bq
+
+        return fonte_bq
     if fonte == "oracle":
         from . import fonte_oracle
 
         return fonte_oracle
-    raise ConsultaFalhou("fonte", f"REPORTS_FONTE='{fonte}' não suportada", "use 'oracle'")
+    raise ConsultaFalhou("fonte", f"REPORTS_FONTE='{fonte}' não suportada", "use 'bq' ou 'oracle'")
 
 
 def rodar(nome, params, limite=None):
@@ -44,11 +48,21 @@ def rodar(nome, params, limite=None):
         from . import fonte_pg as backend
     else:
         backend = _backend()
+    return _medir(nome, lambda: backend.rodar(nome, params, limite=limite))
+
+
+def formulario(tabela, ids):
+    """Linhas do formulário de evolução `tabela` (TD*) para as evoluções `ids`."""
+    backend = _backend()
+    return _medir(f"formulario {tabela}", lambda: backend.rodar_formulario(tabela, ids))
+
+
+def _medir(nome, chamada):
     inicio = time.perf_counter()
     try:
-        linhas = backend.rodar(nome, params, limite=limite)
+        linhas = chamada()
     except Exception as erro:
-        indisponivel = type(erro).__name__ == "OracleIndisponivel"
+        indisponivel = type(erro).__name__ in ("OracleIndisponivel", "BqIndisponivel")
         falha = ConsultaFalhou(
             nome,
             getattr(erro, "motivo", None) or str(erro).strip().splitlines()[0],

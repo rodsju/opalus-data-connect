@@ -18,12 +18,15 @@ from . import catalogo
 
 logger = logging.getLogger(__name__)
 
-TIPOS = ("anthropic", "openai")
+# decisions: Decisions API do OpenRouter (Jev, da TypeSafe) -- manda estado + perguntas tipadas e
+# recebe a escolha com probabilidades, nao texto. Nao e chat: entra so com a capacidade "decisao".
+TIPOS = ("anthropic", "openai", "decisions")
+URL_DECISIONS = "https://openrouter.ai/api/alpha/decisions"
 
 # O que o provedor sabe fazer. Protocolo (tipo) e oficio (capacidade) sao
 # coisas diferentes: o mesmo endpoint openai serve chat e embeddings, mas um
 # modelo nao faz os dois -- por isso o cadastro e por capacidade.
-CAPACIDADES = ("llm", "embedding")
+CAPACIDADES = ("llm", "embedding", "decisao")
 
 
 class ConfiguracaoInvalida(Exception):
@@ -134,7 +137,7 @@ def escolher(valor=None, capacidade="llm"):
     """Provedor do par "slug::modelo" pedido, ou o primeiro da capacidade."""
     pares = disponiveis(capacidade)
     if not pares:
-        oficio = "de embeddings" if capacidade == "embedding" else "de IA"
+        oficio = {"embedding": "de embeddings", "decisao": "de decisão"}.get(capacidade, "de IA")
         raise ConfiguracaoInvalida(
             f"Nenhum provedor {oficio} configurado",
             f"Cadastre um em Setup › AI Providers com capacidade '{capacidade}'.",
@@ -219,6 +222,12 @@ def validar(nome, tipo, modelos, capacidade, chave, criando):
             "A Anthropic não expõe API de embeddings. Endpoint compatível com o "
             "formato OpenAI (DeepSeek, OpenRouter, vLLM) entra como 'openai' com a "
             "URL própria.",
+        )
+    if (capacidade == "decisao") != (tipo == "decisions"):
+        raise ConfiguracaoInvalida(
+            "Capacidade 'decisao' anda junto com o tipo 'decisions'",
+            "O Jev (OpenRouter) responde perguntas tipadas com probabilidade, não texto: não serve como "
+            "'llm', e um modelo de chat não fala a Decisions API.",
         )
     if not criando:
         return

@@ -1,0 +1,23 @@
+{% import "reports/_macros.html" as rp %}
+{% if bloco.grafico %}{{ rp.grafico(b.slug ~ '-unidades', bloco.grafico, 260) }}{% endif %}
+<div class="rp-tabela-wrap" style="max-height: 300px">
+  <table class="rp-tabela rp-tabela--compacta">
+    <thead><tr><th>Unidade</th><th class="num">Pacientes</th><th class="num">Por paciente</th><th class="num">Custo</th><th class="num" title="Participação no total">%</th></tr></thead>
+    <tbody>
+      {% for l in bloco.unidades %}
+      <tr>
+        <td>{{ l.grupo }}</td>
+        <td class="num">{{ l.pacientes | valor('int') }}</td>
+        <td class="num">{% if l.por_paciente is not none %}{{ l.por_paciente | moeda_curta }}{% else %}—{% endif %}</td>
+        <td class="num">{{ l.custo | moeda_curta }}</td>
+        {{ rp.share(l.pct, 'violet') }}
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td>Total</td><td></td><td></td><td class="num">{{ bloco.total | moeda_curta }}</td><td></td></tr></tfoot>
+  </table>
+</div>
+{% if bloco.grafico_tipo %}
+<h3 class="rp-subtitulo">Por tipo de atendimento</h3>
+{{ rp.grafico(b.slug ~ '-tipo', bloco.grafico_tipo, 200) }}
+{% endif %}

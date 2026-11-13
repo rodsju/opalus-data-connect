@@ -12,6 +12,7 @@ paciente na conta entra UMA vez, na primeira linha dele. Tudo o mais é Oracle.
 
 from .. import layout
 from ..reports import comum, fonte
+from . import historia
 
 LOTE = 900
 TIPOS = [(k, v) for k, v in comum.Filtros.TIPOS.items() if k]
@@ -31,21 +32,6 @@ def _valores_orcamento(ids):
     for inicio in range(0, len(lista), LOTE):
         for l in fonte.rodar("orcamentos_valor", {"IDS": lista[inicio:inicio + LOTE]}):
             saida[l["id_orcamento"]] = l
-    return saida
-
-
-def _glosas(contas):
-    """{(conta, 'A', admissão) | (conta, 'P', paciente): glosa agregada}. Vazio sem carga ou sem Postgres."""
-    if not contas:
-        return {}
-    try:
-        linhas = fonte.rodar("cp_glosas", {"CONTAS": sorted(contas)})
-    except comum.ConsultaFalhou:
-        return {}
-    saida = {}
-    for l in linhas:
-        chave = (l["id_conta"], "A", l["id_admissao"]) if l["id_admissao"] else (l["id_conta"], "P", l["id_paciente"])
-        saida[chave] = l
     return saida
 
 
@@ -73,13 +59,13 @@ def nota_fiscal(c, notas_planilha):
     return None, None
 
 
-def _rotulo_origem(glosa):
-    partes = sorted(set((glosa.get("origem_glosa") or "planilha").split("/")), key=lambda o: o != "xml")
-    return f"({'/'.join(partes)})"
+def juntar(contas, orcamentos, ret):
+    """Linhas do Oracle (conta × admissão × orçamento) + orçamentos + retornos (historia.retornos). Puro.
 
-
-def juntar(contas, orcamentos, glosas):
-    """Linhas do Oracle (conta × admissão × orçamento) + orçamentos + glosa da planilha. Puro."""
+    A glosa da guia é repartida entre os orçamentos dela (historia.marcar); os filtros de glosa,
+    recuperação e perda valem pelo paciente na conta (_glosa, _recuperado, _perda).
+    """
+    glosas = (ret or {}).get("glosas", {})
     por_admissao = {}
     for c in contas:
         if c.get("id_orcamento"):
@@ -87,23 +73,12 @@ def juntar(contas, orcamentos, glosas):
     notas = {}
     for (conta, _, _), g in glosas.items():
         notas.setdefault(conta, set()).update(n.strip() for n in (g.get("notas_planilha") or "").split(",") if n.strip())
-    usadas = set()
     saida = []
     for c in contas:
         nf, nf_origem = nota_fiscal(c, notas.get(c["id_conta"]))
         orc = orcamentos.get(c.get("id_orcamento")) if c.get("id_orcamento") else None
-        # Glosa: uma vez por admissão da conta; casada pelo total do paciente, uma vez por paciente
-        chave = (c["id_conta"], "A", c["id_admissao"])
-        glosa = glosas.get(chave)
-        if glosa is None:
-            chave = (c["id_conta"], "P", c.get("id_paciente"))
-            glosa = glosas.get(chave)
-        do_paciente = glosa  # vale para os filtros em todas as linhas do paciente
-        if glosa is not None and chave in usadas:
-            glosa = None
-        if glosa is not None:
-            usadas.add(chave)
-        irmaos = por_admissao.get((c["id_conta"], c["id_admissao"]), [])
+        do_paciente = glosas.get((c["id_conta"], "A", c["id_admissao"])) or \
+            glosas.get((c["id_conta"], "P", c.get("id_paciente")))
         orcado = comum.num(orc["orcado"]) if orc else None
         saida.append({
             **c,
@@ -116,25 +91,14 @@ def juntar(contas, orcamentos, glosas):
             "situacao_orcamento": orc["situacao_orcamento"] if orc else None,
             "orcamento_inicio": _data(orc.get("orcamento_inicio")) if orc else None,
             "orcamento_fim": _data(orc.get("orcamento_fim")) if orc else None,
-            "orcamentos_na_conta": len(irmaos),
+            "orcamentos_na_conta": len(por_admissao.get((c["id_conta"], c["id_admissao"]), [])),
             "orcado": orcado,
             "dif_orcado": (comum.num(c["faturamento_grupo"]) - orcado) if orcado is not None else None,
-            "glosa": comum.num(glosa["glosa"]) if glosa else None,
-            "origem_glosa": glosa.get("origem_glosa") if glosa else None,
-            "glosa_nota": (f"{_rotulo_origem(glosa)} " + ("do paciente na conta (todos os orçamentos)"
-                                                          if len(irmaos) > 1 else (glosa["motivos"] or ""))).strip()
-            if glosa else None,
-            "recuperado": comum.num(glosa["recuperado"]) if glosa else None,
-            "perda": comum.num(glosa["perda"]) if glosa else None,
-            "faturado_planilha": comum.num(glosa["faturado_planilha"]) if glosa else None,
-            "motivos": glosa["motivos"] if glosa else None,
-            "status_glosa": glosa["status_glosa"] if glosa else None,
-            "situacao_cruzamento": glosa["situacao_cruzamento"] if glosa else None,
             "_glosa": comum.num(do_paciente["glosa"]) if do_paciente else 0,
             "_recuperado": comum.num(do_paciente["recuperado"]) if do_paciente else 0,
             "_perda": comum.num(do_paciente["perda"]) if do_paciente else 0,
         })
-    return saida
+    return historia.marcar(saida, ret)
 
 
 SITUACOES_ORCAMENTO = ["Autorizado (operadora)", "Autorizado (interno)", "Liberado", "Pendente", "Cancelado"]
@@ -181,7 +145,7 @@ def carregar(f):
     filtros = comum.Filtros(f.get("mes") or comum.mes_padrao(), f.get("unidade"), tipo=f.get("tipo"))
     contas = fonte.rodar("conta_paciente", filtros.params())
     ids = {c["id_orcamento"] for c in contas if c.get("id_orcamento")}
-    linhas = juntar(contas, _valores_orcamento(ids), _glosas({c["id_conta"] for c in contas}))
+    linhas = juntar(contas, _valores_orcamento(ids), historia.retornos({c["id_conta"] for c in contas}))
     operadora = (f.get("operadora") or "").strip().upper()
     paciente = (f.get("paciente") or "").strip().upper().removeprefix("P")
     busca = (f.get("busca") or "").strip().upper()
@@ -210,7 +174,7 @@ def resumo(linhas):
     return [
         {"rotulo": "Orçado", "valor": sum(orcado.values()), "formato": "moeda_curta", "icone": "clipboard-check",
          "tom": "cyan", "hint": f"{len(orcado)} orçamentos · {len(linhas)} linhas"},
-        {"rotulo": "Faturamento", "valor": soma("faturamento_grupo"), "formato": "moeda_curta", "icone": "banknote",
+        {"rotulo": "Faturável", "valor": soma("faturamento_grupo"), "formato": "moeda_curta", "icone": "banknote",
          "tom": "blue", "hint": f"bruto {layout.fmt_moeda_curta(soma('bruto'))}"},
         {"rotulo": "Pré-auditoria", "valor": soma("pre_auditoria"), "formato": "moeda_curta", "icone": "scan-search",
          "tom": "violet", "hint": "cortado antes do envio"},
@@ -222,7 +186,7 @@ def resumo(linhas):
 
 
 CONSULTA = {
-    "slug": "conta-paciente", "titulo": "Conta do paciente", "icone": "file-stack", "larga": True,
+    "slug": "conta-paciente", "titulo": "Conta do paciente", "icone": "file-stack",
     "descricao": "A história de cada paciente dentro da conta: orçamento, pré-auditoria, fatura (bruto, pacote, "
                  "desconto, faturamento, fatura da operadora) e a glosa (XML da operadora ou planilha). Uma linha por conta × paciente × "
                  "orçamento — a conta pode faturar mais de um orçamento; a glosa do paciente entra na primeira linha.",
@@ -255,20 +219,15 @@ CONSULTA = {
         {"campo": "paciente_codigo", "rotulo": "Nome", "formato": "nome_paciente", "so_tela": True},
         {"campo": "id_orcamento", "rotulo": "Orçamento", "formato": "mono", "sub": "orcamento_rotulo",
          "link": "/consultas/orcamentos/{id_orcamento}"},
+        {"campo": "situacao", "rotulo": "Situação", "formato": "badge"},
         {"campo": "orcado", "rotulo": "Orçado", "formato": "moeda", "num": True},
-        {"campo": "bruto", "rotulo": "Bruto", "formato": "moeda", "num": True},
-        {"campo": "pacote", "rotulo": "Pacote", "formato": "moeda", "num": True},
-        {"campo": "pre_auditoria", "rotulo": "Pré-auditoria", "formato": "moeda", "num": True},
+        *historia.COLUNAS,
         {"campo": "desconto_informativo", "rotulo": "Desconto", "formato": "moeda", "num": True},
-        {"campo": "faturamento_grupo", "rotulo": "Faturamento", "formato": "moeda", "num": True, "sub": "situacao"},
-        {"campo": "fatura_operadora", "rotulo": "Fatura operadora", "formato": "moeda", "num": True},
-        {"campo": "glosa", "rotulo": "Glosa", "formato": "moeda", "num": True, "sub": "glosa_nota"},
         {"campo": "recuperado", "rotulo": "Recuperado (planilha)", "formato": "moeda", "num": True},
         {"campo": "perda", "rotulo": "Perda (planilha)", "formato": "moeda", "num": True, "sub": "status_glosa"},
         # Só no CSV
         {"campo": "protocolo", "rotulo": "Protocolo", "so_csv": True},
         {"campo": "nf_origem", "rotulo": "Origem da nota fiscal", "so_csv": True},
-        {"campo": "situacao", "rotulo": "Situação da conta", "so_csv": True},
         {"campo": "unidade", "rotulo": "Unidade", "so_csv": True},
         {"campo": "pagador", "rotulo": "Pagador", "so_csv": True},
         {"campo": "tipo_nome", "rotulo": "Tipo de atendimento", "so_csv": True},
@@ -278,9 +237,9 @@ CONSULTA = {
         {"campo": "orcamento_fim", "rotulo": "Fim do orçamento", "formato": "data", "so_csv": True},
         {"campo": "orcamentos_na_conta", "rotulo": "Orçamentos do paciente na conta", "so_csv": True},
         {"campo": "itens", "rotulo": "Itens", "so_csv": True},
-        {"campo": "dif_orcado", "rotulo": "Faturamento − orçado", "so_csv": True},
+        {"campo": "dif_orcado", "rotulo": "Faturável − orçado", "so_csv": True},
         {"campo": "itens_pre_auditados", "rotulo": "Itens pré-auditados", "so_csv": True},
-        {"campo": "particular", "rotulo": "Particular", "so_csv": True},
+        {"campo": "retorno", "rotulo": "Retorno da operadora", "so_csv": True},
         {"campo": "tributos_erp", "rotulo": "Tributos (ERP)", "so_csv": True},
         {"campo": "glosa_iw", "rotulo": "Glosa IW (ERP)", "so_csv": True},
         {"campo": "faturado_planilha", "rotulo": "Faturado na planilha", "so_csv": True},

@@ -1,5 +1,6 @@
 
 import os
+import re
 from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -22,8 +23,10 @@ from . import oracle as oracle_view
 from . import provedores as provedores_mod
 from .conciliacao import paginas as conciliacao_view
 from .conciliacao import privacidade as privacidade_mod
+from .reports import comum as comum_reports
 from .reports import galeria as reports_galeria
 from .consultas import conta_paciente_detalhe
+from .consultas import evolucao as evolucao_view
 from .consultas import lista as consultas_lista
 from .consultas import orcamentos as orcamentos_view
 from .consultas import registro as consultas_registro
@@ -122,9 +125,10 @@ def reports_glosa_antigo(request: Request):
 def reports_relatorio(
     request: Request, slug: str, mes: str = Query(default=""), unidade: str = Query(default=""),
     convenio: str = Query(default=""), motivo: str = Query(default=""), tipo: str = Query(default=""),
+    de: str = Query(default=""), ate: str = Query(default=""), categoria: str = Query(default=""),
 ):
     html, status = reports_mod.gerar_pagina(
-        usuario_mod.identificar(request), slug, mes, unidade, convenio, motivo, tipo)
+        usuario_mod.identificar(request), slug, mes, unidade, convenio, motivo, tipo, de, ate, categoria)
     if html is None:
         raise HTTPException(status_code=404, detail="Relatório não encontrado")
     return HTMLResponse(content=html, status_code=status)
@@ -206,6 +210,32 @@ def consultas_orcamento_analisar(request: Request, id_orcamento: int, forcar: st
         html, status = orcamentos_view.gerar_detalhe(usuario, id_orcamento, erro=erro)
         return HTMLResponse(content=html, status_code=status)
     return RedirectResponse(f"/consultas/orcamentos/{id_orcamento}?ok={quote(aviso)}", status_code=303)
+
+
+@app.get("/consultas/evolucao/{id_admissao}")
+def consultas_evolucao(request: Request, id_admissao: int, mes: str = Query(default=""), ok: str = Query(default="")):
+    html, status = evolucao_view.gerar_detalhe(usuario_mod.identificar(request), id_admissao, _mes(mes),
+                                               aviso=ok or None)
+    if html is None:
+        raise HTTPException(status_code=404, detail="Admissão não encontrada")
+    return HTMLResponse(content=html, status_code=status)
+
+
+@app.post("/consultas/evolucao/{id_admissao}/analisar")
+def consultas_evolucao_analisar(request: Request, id_admissao: int, mes: str = Form(default=""),
+                                forcar: str = Form(default=""), par: str = Form(default="")):
+    usuario = usuario_mod.identificar(request)
+    mes = _mes(mes) or comum_reports.mes_padrao()
+    aviso, erro = evolucao_view.analisar(id_admissao, mes, usuario, forcar=bool(forcar), par=par)
+    if erro:
+        html, status = evolucao_view.gerar_detalhe(usuario, id_admissao, mes, erro=erro)
+        return HTMLResponse(content=html, status_code=status)
+    return RedirectResponse(f"/consultas/evolucao/{id_admissao}?mes={mes}&ok={quote(aviso)}", status_code=303)
+
+
+def _mes(valor):
+    """'AAAA-MM' ou ''; qualquer outra coisa vira ''."""
+    return valor if re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", valor or "") else ""
 
 
 @app.get("/consultas/{slug}")

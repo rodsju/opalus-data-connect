@@ -39,6 +39,7 @@ MENU = [
             {"href": "/reports/glosa-motivos", "icone": "tags", "rotulo": "Motivos de glosa"},
             {"href": "/reports/glosa-iw", "icone": "shield-x", "rotulo": "Glosa IW"},
             {"href": "/reports/orcamentos", "icone": "clipboard-list", "rotulo": "Orçamentos"},
+            {"href": "/reports/medicamentos", "icone": "pill", "rotulo": "Medicamentos"},
             {"href": "/reports/ocupacao", "icone": "bed", "rotulo": "Ocupação"},
             {"href": "/reports/auditoria", "icone": "scale", "rotulo": "Auditoria de contas"},
             {"href": "/reports/blocos", "icone": "layout-grid", "rotulo": "Blocos de relatório"},
@@ -53,6 +54,7 @@ MENU = [
             {"href": "/consultas/pre-auditoria", "icone": "scan-search", "rotulo": "Pré-auditoria"},
             {"href": "/consultas/orcamentos", "icone": "clipboard-check", "rotulo": "Orçamentos"},
             {"href": "/consultas/pacientes", "icone": "bed", "rotulo": "Pacientes em atendimento"},
+            {"href": "/consultas/evolucao", "icone": "activity", "rotulo": "Evolução clínica"},
         ],
     },
     {
@@ -145,15 +147,28 @@ def fmt_moeda(valor):
     return "—" if valor is None else f"R$ {fmt(valor)}"
 
 
+# Valor abreviado (cards, hints, textos de risco e eixos dos gráficos). Lugar ÚNICO: o JS dos
+# gráficos lê esta mesma lista (base.html -> window.OPALUS.escalasMoeda -> reports.js).
+# casas = máximo de decimais; zero à direita cai (R$ 200 mil, R$ 14,91 MM).
+ESCALAS_MOEDA = [
+    {"corte": 1e9, "sufixo": "bi", "casas": 2},
+    {"corte": 1e6, "sufixo": "MM", "casas": 2},
+    {"corte": 1e3, "sufixo": "mil", "casas": 1},
+]
+
+
 def fmt_moeda_curta(valor):
     # Saldo na casa dos bilhoes nao cabe no card; o valor cheio vai no hint
     if valor is None:
         return "—"
     valor = float(valor)
-    for corte, sufixo in ((1e9, "bi"), (1e6, "mi"), (1e3, "mil")):
-        if abs(valor) >= corte:
-            numero = f"{valor / corte:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
-            return f"R$ {numero} {sufixo}"
+    for escala in ESCALAS_MOEDA:
+        if abs(valor) >= escala["corte"]:
+            numero = f"{valor / escala['corte']:,.{escala['casas']}f}"
+            if "." in numero:
+                numero = numero.rstrip("0").rstrip(".")
+            numero = numero.replace(",", "_").replace(".", ",").replace("_", ".")
+            return f"R$ {numero} {escala['sufixo']}"
     return fmt_moeda(valor)
 
 
@@ -224,6 +239,7 @@ env.filters["pct"] = fmt_pct
 env.filters["valor"] = fmt_valor
 
 env.globals.update(
+    escalas_moeda=ESCALAS_MOEDA,
     ambiente=AMBIENTE,
     projeto=PROJETO,
     sso_url=SSO_URL,

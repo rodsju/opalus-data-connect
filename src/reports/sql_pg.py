@@ -136,15 +136,6 @@ SELECT COALESCE(g.motivo, '(sem código)') AS motivo, MAX(m.descricao) AS descri
  GROUP BY 1 ORDER BY COUNT(*) DESC
 """,
     # ---- Orçamentos detalhados: glosa da planilha pela admissão do orçamento ----
-    "orc_glosa_admissoes": """
-SELECT x.id_admissao, g.competencia, COUNT(*) AS linhas, COALESCE(SUM(g.glosa), 0) AS glosa,
-       MODE() WITHIN GROUP (ORDER BY g.motivo) AS motivo
-  FROM conciliacao.glosa_efetiva g
-  JOIN conciliacao.carga c ON c.id = g.carga_id AND c.ativa AND c.tipo = 'glosa'
-  JOIN conciliacao.cruzamento_efetivo x ON x.carga_id = g.carga_id AND x.linha = g.linha
- WHERE x.id_admissao = ANY(%(ADMISSOES)s::bigint[])
- GROUP BY x.id_admissao, g.competencia
-""",
     "orc_glosa_linhas": f"""
 SELECT g.competencia, g.motivo, m.descricao, m.vigente, g.classificacao, g.glosa, g.valor_recursado,
        g.valor_recurso_bruto AS recuperado, COALESCE(g.glosa_acatada, 0) + COALESCE(g.glosa_mantida, 0) AS perda,
@@ -264,6 +255,34 @@ SELECT i.sequencial, i.data, i.tabela, i.codigo, i.descricao, i.quantidade, i.in
   JOIN conciliacao.tiss_guia_ativa g ON g.id = i.guia_id
  WHERE g.id_conta = %(CONTA)s::bigint AND g.id_admissao = %(ADMISSAO)s::bigint AND i.glosa > 0
  ORDER BY i.glosa DESC
+""",
+    # Faturamento › Exportadas sem retorno: o XML TISS de volta de cada guia casada com o ERP
+    "tiss_retornos": """
+SELECT id_conta, id_admissao, situacao, liberado, glosa
+  FROM conciliacao.tiss_guia_ativa
+ WHERE id_conta = ANY(%(CONTAS)s) AND id_admissao IS NOT NULL
+""",
+    # História da conta: glosa por item do XML, para separar os orçamentos da mesma guia
+    "tiss_glosa_itens": """
+SELECT g.id_conta, g.id_admissao, i.id_item_erp, i.glosa
+  FROM conciliacao.tiss_item i
+  JOIN conciliacao.tiss_guia_ativa g ON g.id = i.guia_id
+ WHERE g.id_conta = ANY(%(CONTAS)s) AND g.id_admissao IS NOT NULL AND i.glosa > 0
+""",
+    # ... e a linha da planilha de glosa casada com o ERP (só guias glosadas aparecem nela).
+    # Linha casada pelo total do paciente fica sem admissão: vem com o id_paciente.
+    "planilha_retornos": """
+SELECT x.id_conta, x.id_admissao, x.id_paciente,
+       CASE WHEN bool_and(x.situacao = 'CONCILIADO') THEN 'CONCILIADO' ELSE 'DIVERGENTE' END AS situacao
+  FROM conciliacao.cruzamento x
+  JOIN conciliacao.carga c ON c.id = x.carga_id AND c.ativa AND c.tipo = 'glosa'
+ WHERE x.id_conta = ANY(%(CONTAS)s) AND x.situacao IN ('CONCILIADO', 'DIVERGENTE')
+ GROUP BY x.id_conta, x.id_admissao, x.id_paciente
+""",
+    "tiss_arquivos_resumo": """
+SELECT (SELECT COUNT(*) FROM conciliacao.tiss_arquivo)                    AS arquivos,
+       (SELECT MAX(data_emissao) FROM conciliacao.tiss_arquivo)             AS ultimo,
+       (SELECT data_referencia FROM conciliacao.carga WHERE ativa AND tipo = 'glosa') AS planilha_referencia
 """,
     # Descrição do motivo da pré-auditoria: internos (1-4, parâmetro) e TISS (Tabela 38)
     "pa_motivos": """

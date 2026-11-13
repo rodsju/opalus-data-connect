@@ -14,7 +14,7 @@ ITENS = [
         "negocio": "Quem paga o faturamento do mês e quanto as maiores concentram. Operadora recebe a fatura "
         "(NF); particular é cobrado do paciente pela própria empresa do grupo.",
         "tecnico": "faturamento_por_operadora: CAPPAYMENT.IDENTERPRISE → GLBENTERPRISE, sem simulação, somado "
-        "entre unidades. Valor = faturamento do grupo (preço × (qtd − qtd coberta)); pagador 'particular' quando a "
+        "entre unidades. Valor = faturável (preço × (qtd − qtd coberta)); pagador 'particular' quando a "
         "entidade é empresa do grupo (CORPORATION=1).",
     },
 ]
@@ -38,7 +38,7 @@ def montar(linhas):
         "grafico": comum.grafico(
             "barras-h",
             [o["operadora"] for o in topo],
-            [{"nome": "Faturamento", "tom": "blue", "valores": [o["valor_faturado"] for o in topo]}],
+            [{"nome": "Faturável", "tom": "blue", "valores": [o["valor_faturado"] for o in topo]}],
             gradiente=True,
         ),
         "altura": max(220, 34 * len(topo) + 50),

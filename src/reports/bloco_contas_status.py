@@ -13,7 +13,7 @@ ITENS = [
         "titulo": "Situação da conta",
         "negocio": "Em que ponto do ciclo o faturamento do mês está, por unidade.",
         "tecnico": "CAPPAYMENT: SIMULATION=1 → Simulação; WRITEOFF=1 → Baixada; LIBERATED=0 → Aberta; "
-        "EXPORTED=0 → Liberada; senão Exportada. Valor = faturamento do grupo (preço × (qtd − qtd coberta)). "
+        "EXPORTED=0 → Liberada; senão Exportada. Valor = faturável (preço × (qtd − qtd coberta)). "
         "Contas sem item ficam de fora (JOIN com CAPPAYMENTITEM).",
     },
 ]
@@ -27,7 +27,7 @@ def montar(linhas):
     situacoes = [s for s, _ in comum.SITUACOES_CONTA if any(l["situacao"] == s for l in linhas)]
     situacoes += sorted({l["situacao"] for l in linhas} - set(situacoes))
 
-    # Valor da conta = faturamento do grupo (cobrado: fatura da operadora + particular)
+    # Valor da conta = faturável (cobrado: fatura da operadora + particular)
     linhas = [{**l, "valor": l.get("faturamento_grupo")} for l in linhas]
     unidades = comum.ordenar(comum.somar_por(linhas, "unidade", ["valor"]), "valor")
     nomes = [u["unidade"] for u in unidades]

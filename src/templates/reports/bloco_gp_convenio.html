@@ -3,7 +3,7 @@
   <div class="rp-duo__graf">{{ rp.grafico(b.slug, bloco.grafico, bloco.altura) }}</div>
   <div class="rp-duo__tab rp-tabela-wrap">
     <table class="rp-tabela rp-tabela--compacta">
-      <thead><tr><th>Convênio</th><th class="num">Glosa</th><th class="num">Taxa</th><th class="num">Recup.</th><th class="num">Part.</th></tr></thead>
+      <thead><tr><th>Convênio</th><th class="num">Glosa</th><th class="num">Taxa</th><th class="num">Recup.</th><th class="num" title="Participação no total">%</th></tr></thead>
       <tbody>
         {% for l in bloco.linhas %}
         <tr{% if l.outros %} class="rp-outros"{% endif %}>

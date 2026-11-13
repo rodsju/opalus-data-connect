@@ -10,7 +10,14 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - ENV=hml
-      - PROJECT_ID=opalus-datalake-hml-01
+      - PROJECT_ID=atlas-dw-hml-511718
+      # Origem do ERP para /reports e /consultas: camada bronze no BigQuery.
+      # O dataset muda entre ambientes/camadas -- as SQLs (src/reports/sql_bq.py)
+      # nunca o escrevem, so leem daqui.
+      - REPORTS_FONTE=bq
+      - BQ_PROJECT=atlas-dw-hml-511718
+      - BQ_DATASET=bronze_iw_opalus
+      - BQ_LOCATION=us-central1
       - SA_KEY_FILE=/root/.config/gcloud/application_default_credentials.json
       - x-opalus-user-email=rodrigo.julian@ctrl333.com
       # Usada pelas paginas /oracle, que leem o catalogo gravado por

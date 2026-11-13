@@ -8,9 +8,31 @@ PARTIAL = "reports/bloco_resumo.html"
 LARGURA = "faixa"
 ITENS = [
     {
+        "chave": "bruto",
+        "titulo": "Bruto lançado",
+        "negocio": "Tudo o que foi lançado nas contas do mês a preço de tabela, antes de qualquer abatimento. "
+        "É o topo da cascata da conta (a mesma da conta do paciente).",
+        "tecnico": "contas_por_status, situação ≠ 'Simulação'. SUM(UNITPRICE × QUANTITY) dos itens.",
+    },
+    {
+        "chave": "pacote",
+        "titulo": "Incluso em pacote",
+        "negocio": "Itens que aparecem na conta mas já estão pagos dentro da diária/pacote contratado com a "
+        "operadora: são lançados para controle e custo, mas não são cobrados à parte. Não é glosa nem desconto: "
+        "é o que o pacote cobre.",
+        "tecnico": "SUM(UNITPRICE × COVERAGEQUANTITY) menos a pré-auditoria (o corte interno também é gravado "
+        "como cobertura). Bruto − pacote − pré-auditoria = faturável.",
+    },
+    {
+        "chave": "pre_auditoria",
+        "titulo": "Pré-auditoria",
+        "negocio": "Glosa interna: o que a auditoria cortou antes de mandar a conta para a operadora.",
+        "tecnico": "CAPPAYMENTITEM.PREAUDITBILL*: UNITPRICE × LEAST(PREAUDITBILLQUANT, COVERAGEQUANTITY).",
+    },
+    {
         "chave": "faturado",
-        "titulo": "Faturamento do grupo e fatura da operadora",
-        "negocio": "Faturamento do grupo = o que foi cobrado no mês (fora simulações): a fatura que vai para a "
+        "titulo": "Faturável e fatura da operadora",
+        "negocio": "Faturável = o que foi cobrado no mês (fora simulações): a fatura que vai para a "
         "operadora + o que o paciente paga (particular). O que estava incluso em pacote/diária não é cobrado.",
         "tecnico": "contas_por_status, situação ≠ 'Simulação'. Cobrado = SUM(UNITPRICE × (QTD − QTD COBERTA)); "
         "particular = conta cuja entidade é empresa do grupo (GLBENTERPRISE.CORPORATION=1). Validado contra a "
@@ -68,22 +90,70 @@ def montar(contas, glosa, gap):
     base_glosa = sum(comum.num(g.get("fatura_operadora")) for g in glosa)
     recuperada = sum(comum.num(g.get("glosa_recuperada")) for g in glosa)
 
+    bruto = soma(reais, "bruto")
+    pacote = soma(reais, "pacote")
+    pre_auditoria = soma(reais, "pre_auditoria")
+
+    # Mesma cascata da conta do paciente, com o sinal de cada passo:
+    # + bruto − pacote − pré-auditoria = faturável − particular = fatura operadora.
     cards = [
         {
-            "rotulo": "Faturamento do grupo",
+            "rotulo": "Bruto lançado",
+            "sinal": "+",
+            "valor": bruto,
+            "formato": "moeda_curta",
+            "hint": f"{int(n_contas)} contas · tudo lançado, a preço de tabela"
+                    + (" · simulação fora" if simulado else ""),
+            "icone": "layers",
+            "tom": "navy",
+        },
+        {
+            "rotulo": "Incluso em pacote",
+            "sinal": "−",
+            "valor": pacote,
+            "formato": "moeda_curta",
+            "barra": comum.pct(pacote, bruto),
+            "hint": "do bruto · coberto pela diária/pacote, não cobrado à parte",
+            "icone": "package",
+            "tom": "green",
+        },
+        {
+            "rotulo": "Pré-auditoria",
+            "sinal": "−",
+            "valor": pre_auditoria,
+            "formato": "moeda_curta",
+            "barra": comum.pct(pre_auditoria, bruto),
+            "hint": "do bruto · glosa interna, cortado antes do envio",
+            "icone": "scissors",
+            "tom": "coral",
+        },
+        {
+            "rotulo": "Faturável",
+            "sinal": "=",
             "valor": faturado,
             "formato": "moeda_curta",
-            "hint": f"{int(n_contas)} contas · bruto {_curta(soma(reais, 'bruto'))}, "
-                    f"pacote {_curta(soma(reais, 'pacote'))}" + (" · simulação fora" if simulado else ""),
+            "barra": comum.pct(faturado, bruto),
+            "hint": "do bruto · o que foi cobrado",
             "icone": "banknote",
             "tom": "blue",
         },
         {
+            "rotulo": "Particular",
+            "sinal": "−",
+            "valor": particular,
+            "formato": "moeda_curta",
+            "barra": comum.pct(particular, faturado),
+            "hint": "do faturável · cobrado do paciente",
+            "icone": "user",
+            "tom": "violet",
+        },
+        {
             "rotulo": "Fatura operadora",
+            "sinal": "=",
             "valor": operadora,
             "formato": "moeda_curta",
             "barra": comum.pct(operadora, faturado),
-            "hint": f"do grupo · particular {_curta(particular)}",
+            "hint": "do faturável · vai na nota para a operadora",
             "icone": "building-2",
             "tom": "cyan",
         },
@@ -92,7 +162,7 @@ def montar(contas, glosa, gap):
             "valor": fechado,
             "formato": "moeda_curta",
             "barra": comum.pct(fechado, faturado),
-            "hint": "do faturado já enviado",
+            "hint": "do faturável já enviado",
             "icone": "send",
             "tom": "teal",
         },

@@ -10,16 +10,16 @@
 {% with abas=consultas, grupo="Consultas" %}{% include "reports/_cabecalho.html" %}{% endwith %}
 {% endwith %}
 
-<main class="rp-wrap">
+<main class="rp-wrap rp-wrap--larga">
   <a class="rp-btn rp-btn--ghost" href="/consultas/orcamentos" style="align-self:flex-start"><i data-lucide="arrow-left"></i>Voltar à lista</a>
   {% if aviso %}<div class="rp-alerta rp-alerta--info"><i data-lucide="circle-check"></i><div>{{ aviso }}</div></div>{% endif %}
   {% if erro %}<div class="rp-alerta rp-alerta--erro"><i data-lucide="circle-x"></i><div><b>{{ erro.motivo }}</b>{% if erro.detalhe %} — {{ erro.detalhe }}{% endif %}</div></div>{% endif %}
   {% if ctx %}
   {{ rp.kpis([
     {'rotulo': 'Orçado', 'valor': o.orcado, 'formato': 'moeda_curta', 'icone': 'wallet', 'tom': 'violet', 'hint': o.itens ~ ' itens'},
-    {'rotulo': 'Faturado', 'valor': o.faturado, 'formato': 'moeda_curta', 'icone': 'receipt', 'tom': 'cyan', 'hint': o.contas ~ ' conta(s), ' ~ o.contas_abertas ~ ' aberta(s)'},
-    {'rotulo': 'Diferença', 'valor': (o.faturado or 0) - (o.orcado or 0), 'formato': 'moeda_curta', 'icone': 'scale', 'tom': 'amber', 'hint': 'faturado − orçado'},
-    {'rotulo': 'Glosa (planilha)', 'valor': ctx.glosas | sum(attribute='glosa'), 'formato': 'moeda_curta', 'icone': 'shield-x', 'tom': 'coral', 'hint': (ctx.glosas | length) ~ ' linha(s) na planilha'},
+    {'rotulo': 'Faturável', 'valor': o.faturado, 'formato': 'moeda_curta', 'icone': 'receipt', 'tom': 'cyan', 'hint': 'exportado ' ~ o.exportado_rotulo ~ ' · a exportar ' ~ (o.a_exportar | moeda_curta)},
+    {'rotulo': 'Diferença', 'valor': (o.faturado or 0) - (o.orcado or 0), 'formato': 'moeda_curta', 'icone': 'scale', 'tom': 'amber', 'hint': 'faturável − orçado'},
+    {'rotulo': 'Glosado', 'valor': o.glosado or 'sem conta', 'formato': 'texto', 'icone': 'shield-x', 'tom': 'coral', 'hint': 'retorno por guia (conta × admissão), não por orçamento'},
     {'rotulo': 'Senha', 'valor': (o.validade_senha | fmt) if o.validade_senha else 'sem validade', 'formato': 'texto', 'icone': 'key-round', 'tom': 'blue', 'hint': 'nº ' ~ (o.senha or '—')},
   ]) }}
 
@@ -103,7 +103,7 @@
           <tbody>{% for c in ctx.contas %}<tr><td class="mono">{{ c.id_conta }}<div class="rp-sub">{{ c.inicio | fmt }} a {{ c.fim | fmt }}</div></td><td>{{ c.situacao }}</td><td class="mono">{{ c.protocolo or '—' }}{% if c.data_entrega %}<div class="rp-sub">entregue {{ c.data_entrega | fmt }}</div>{% endif %}</td><td class="num">{{ c.cobrado | moeda }}</td></tr>
           {% else %}<tr><td colspan="4" class="rp-sub">Ainda não faturado.</td></tr>{% endfor %}</tbody>
         </table>
-        <h3 class="rp-subtitulo">Glosa na planilha</h3>
+        <h3 class="rp-subtitulo">Glosa na planilha (admissão inteira, no período)</h3>
         {% for g in ctx.glosas %}
         <div class="rp-etapa rp-share--coral">
           <div class="rp-etapa__topo"><span><span class="mono">{{ g.motivo or '—' }}</span> {{ (g.descricao or '') | capitalize }}</span><b>{{ g.glosa | moeda }}</b></div>

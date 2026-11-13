@@ -112,6 +112,10 @@ def rodar(nome, params, limite=None):
         sql = f"SELECT * FROM ({sql}) WHERE ROWNUM <= :LIMITE_REPORTS"
         binds["LIMITE_REPORTS"] = int(limite)
 
+    return _executar(sql, binds)
+
+
+def _executar(sql, binds):
     conexao = _conectar(_config())
     try:
         with conexao.cursor() as cursor:
@@ -120,3 +124,24 @@ def rodar(nome, params, limite=None):
             return [dict(zip(colunas, linha)) for linha in cursor.fetchall()]
     finally:
         conexao.close()
+
+
+# Tabela de formulário de evolução (GLBTEMPLATE.TABLENAME): o nome vem do cadastro
+# do ERP, não do usuário, mas entra na SQL -- então só passa nome TD* simples.
+NOME_FORMULARIO = re.compile(r"^TD[A-Z0-9_]{1,28}$")
+
+
+def rodar_formulario(tabela, ids):
+    """Linhas de uma tabela TD* das evoluções `ids` (por IDEVOLUTION). [] se a tabela não tem IDEVOLUTION."""
+    tabela = (tabela or "").strip().upper()
+    if not NOME_FORMULARIO.match(tabela):
+        raise ValueError(f"tabela de formulário inválida: {tabela!r}")
+    if not 0 < len(ids) <= 1000:
+        raise ValueError(f"lista de evoluções precisa ter de 1 a 1000 itens (veio {len(ids)})")
+    tem = _executar("SELECT 1 FROM ALL_TAB_COLUMNS WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') "
+                    "AND TABLE_NAME = :T AND COLUMN_NAME = 'IDEVOLUTION'", {"T": tabela})
+    if not tem:
+        return []
+    nomes = [f"E_{i}" for i in range(len(ids))]
+    sql = f"SELECT * FROM {tabela} WHERE IDEVOLUTION IN ({', '.join(':' + n for n in nomes)})"
+    return _executar(sql, dict(zip(nomes, [int(i) for i in ids])))

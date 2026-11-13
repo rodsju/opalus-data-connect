@@ -49,11 +49,17 @@
   var INT = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
   var DEC = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 
+  // Escalas (mil, MM, bi) vêm de src/layout.py:ESCALAS_MOEDA via base.html -- o mesmo texto dos cards.
+  var ESCALAS = ((window.OPALUS || {}).escalasMoeda || []).map(function (e) {
+    return { corte: e.corte, sufixo: e.sufixo,
+             fmt: new Intl.NumberFormat("pt-BR", { maximumFractionDigits: e.casas }) };
+  });
+
   function curta(v) {
     var a = Math.abs(v);
-    if (a >= 1e9) return "R$ " + DEC.format(v / 1e9) + " bi";
-    if (a >= 1e6) return "R$ " + DEC.format(v / 1e6) + " mi";
-    if (a >= 1e3) return "R$ " + INT.format(v / 1e3) + " mil";
+    for (var i = 0; i < ESCALAS.length; i++) {
+      if (a >= ESCALAS[i].corte) return "R$ " + ESCALAS[i].fmt.format(v / ESCALAS[i].corte) + " " + ESCALAS[i].sufixo;
+    }
     return BRL.format(v);
   }
 

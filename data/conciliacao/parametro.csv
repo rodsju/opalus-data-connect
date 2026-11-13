@@ -1,0 +1,2 @@
+chave;valor;descricao
+criterio_senha_vencida;periodo_atendido;periodo_atendido (padrão): risco se a senha vence antes do fim do período do orçamento ou se há faturável a exportar em conta iniciada depois da validade. data_envio: risco se a senha venceu e ainda há faturável a exportar.

@@ -90,6 +90,15 @@ TIPOS = {
         "colunas": [("codigo", "texto"), ("descricao", "texto")],
         "chave": ["codigo"],
     },
+    "parametro": {
+        "tabela": "parametro",
+        "titulo": "Parâmetros gerais",
+        "origem": "parâmetro do app",
+        "descricao": "Critérios de regra que o time escolhe. criterio_senha_vencida: periodo_atendido (padrão) ou "
+        "data_envio -- ver a descrição de cada linha.",
+        "colunas": [("chave", "texto"), ("valor", "texto"), ("descricao", "texto")],
+        "chave": ["chave"],
+    },
     "motivo_tiss": {
         "tabela": "motivo_tiss",
         "titulo": "Motivos de glosa (TISS)",
@@ -106,6 +115,7 @@ ARQUIVO_SEMENTE = {
     "imposto": "premissa_imposto.csv", "prazo": "premissa_prazo.csv", "recurso": "premissa_recurso.csv",
     "de_para": "convenio_de_para.csv", "aging": "aging_faixa.csv", "empresa_convenio": "empresa_convenio.csv",
     "leitos": "parametro_leitos.csv", "motivo_preauditoria": "motivo_preauditoria.csv",
+    "parametro": "parametro.csv",
 }
 
 

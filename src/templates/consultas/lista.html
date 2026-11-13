@@ -3,7 +3,7 @@
 {% block head %}<link rel="stylesheet" href="/static/css/reports.css">{% endblock %}
 {% set tom_risco = {3: 'coral', 2: 'amber', 1: 'blue'} %}
 {% set nome_risco = {3: 'alta', 2: 'média', 1: 'baixa'} %}
-{% set tom_status = {'ANÁLISE OPALUS': 'amber', 'ANÁLISE OPERADORA': 'blue', 'ACATADO / ANÁLISE OPERADORA': 'violet', 'ACATADO': 'coral', 'PAGO': 'teal', 'GLOSA MANTIDA': 'magenta', 'Exportada (fechada)': 'success', 'Liberada (não exportada)': 'info', 'Aberta (não liberada)': 'warning', 'Baixada (write-off)': 'danger', 'Simulação': 'neutral'} %}
+{% set tom_status = {'ANÁLISE OPALUS': 'amber', 'ANÁLISE OPERADORA': 'blue', 'ACATADO / ANÁLISE OPERADORA': 'violet', 'ACATADO': 'coral', 'PAGO': 'teal', 'GLOSA MANTIDA': 'magenta', 'Exportada (fechada)': 'success', 'Liberada (não exportada)': 'info', 'Aberta (não liberada)': 'warning', 'Baixada (write-off)': 'danger', 'Simulação': 'neutral', 'Com pendência': 'coral', 'Em dia': 'teal', 'piorando': 'coral', 'melhorando': 'teal', 'estável': 'blue', 'indeterminado': 'neutral', 'sim': 'coral', 'não': 'teal', 'sem retorno': 'amber', 'não exportado': 'neutral', 'sem conciliação': 'neutral'} %}
 
 {% macro url(pagina=none, ordem_=none, formato=none) -%}
 ?{% for k, v in filtros.items() if v %}{{ k }}={{ v | urlencode }}&{% endfor %}{% if (ordem_ or ordem) %}ordem={{ ordem_ or ordem }}&{% endif %}{% if pagina %}pagina={{ pagina }}&{% endif %}{% if formato %}formato={{ formato }}{% endif %}
@@ -29,7 +29,7 @@
   <a class="rp-btn rp-btn--ghost" href="{{ url(formato='csv') }}"><i data-lucide="download"></i>CSV</a>
 </form>
 
-<main class="rp-wrap{% if consulta.larga %} rp-wrap--larga{% endif %}">
+<main class="rp-wrap rp-wrap--larga">
   {% if erro %}<div class="rp-alerta rp-alerta--erro"><i data-lucide="unplug"></i><div><b>{{ erro.motivo }}</b>{% if erro.detalhe %} — {{ erro.detalhe }}{% endif %}</div></div>{% endif %}
   {% if resumo %}{{ rp.kpis(resumo) }}{% endif %}
   <section class="rp-bloco rp-bloco--inteira">

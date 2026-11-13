@@ -1,0 +1,7 @@
+{% import "reports/_macros.html" as rp %}
+{{ rp.kpis(bloco.cards) }}
+{% if bloco.categorias %}
+<p class="rp-sub">Por categoria:
+  {% for l in bloco.categorias %}{{ rp.badge(l.grupo ~ ' · ' ~ (l.custo | moeda_curta) ~ ' (' ~ (l.pct | pct) ~ ')', ['violet', 'blue', 'teal', 'neutral'][loop.index0 % 4]) }} {% endfor %}
+</p>
+{% endif %}

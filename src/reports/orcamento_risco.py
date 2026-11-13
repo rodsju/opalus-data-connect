@@ -19,13 +19,21 @@ def _data(valor):
     return valor.date() if isinstance(valor, datetime.datetime) else valor
 
 
-def avaliar(orc, taxas_operadora=None, pacientes_glosados=None, hoje=None):
-    """Regras que valem com o que a linha da lista traz."""
+# Premissas › Parâmetros gerais, chave criterio_senha_vencida
+PERIODO_ATENDIDO, DATA_ENVIO = "periodo_atendido", "data_envio"
+
+
+def avaliar(orc, taxas_operadora=None, pacientes_glosados=None, hoje=None, criterio=PERIODO_ATENDIDO):
+    """Regras que valem com o que a linha da lista traz.
+
+    orc traz a história da conta (consultas/historia): a_exportar = faturável ainda não exportado;
+    aberta_apos_validade = há faturável a exportar em conta iniciada depois da validade da senha.
+    """
     hoje = hoje or datetime.date.today()
     riscos = []
     autorizado = (orc.get("situacao") or "").startswith("Autorizado")
     validade, fim = _data(orc.get("validade_senha")), _data(orc.get("fim"))
-    aberto = comum.num(orc.get("contas_abertas")) > 0 or not comum.num(orc.get("contas"))
+    a_exportar = comum.num(orc.get("a_exportar"))
 
     if autorizado and not (orc.get("senha") or "").strip():
         riscos.append({"regra": "sem_senha", "severidade": ALTA,
@@ -33,9 +41,14 @@ def avaliar(orc, taxas_operadora=None, pacientes_glosados=None, hoje=None):
     if validade and fim and validade < fim:
         riscos.append({"regra": "senha_vence_antes", "severidade": ALTA,
                        "texto": f"Senha vale até {validade:%d/%m/%Y}, antes do fim do período ({fim:%d/%m/%Y})."})
-    elif validade and aberto and validade < hoje:
-        riscos.append({"regra": "senha_vencida", "severidade": ALTA,
-                       "texto": f"Senha vencida em {validade:%d/%m/%Y} com conta ainda em aberto."})
+    elif validade and validade < hoje and a_exportar > 1:
+        if criterio == DATA_ENVIO:
+            riscos.append({"regra": "senha_vencida", "severidade": ALTA,
+                           "texto": f"Senha vencida em {validade:%d/%m/%Y} com {_moeda(a_exportar)} ainda a exportar."})
+        elif orc.get("aberta_apos_validade"):
+            riscos.append({"regra": "senha_vencida", "severidade": ALTA,
+                           "texto": f"{_moeda(a_exportar)} a exportar em conta iniciada depois da validade da "
+                                    f"senha ({validade:%d/%m/%Y})."})
 
     orcado, faturado = comum.num(orc.get("orcado")), comum.num(orc.get("faturado"))
     if faturado > orcado + 1:

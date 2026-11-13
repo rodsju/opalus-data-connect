@@ -13,13 +13,13 @@ import logging
 from .. import catalogo, ia, layout, provedores
 from ..conciliacao import banco
 from ..reports import comum, fonte, orcamento_ia, orcamento_risco
-from . import lista
+from . import historia, lista
 
 logger = logging.getLogger(__name__)
 
 FOCOS = {
     "prevenir": "A prevenir (conta ainda não exportada)",
-    "com_glosa": "Com glosa na planilha",
+    "com_glosa": "Glosados (retorno da operadora)",
     "faturados": "Faturados (contas exportadas)",
     "todos": "Todos",
 }
@@ -45,16 +45,6 @@ def _datas(orc):
 
 def _mes_dia(valor):
     return valor.date() if isinstance(valor, datetime.datetime) else valor
-
-
-def _glosa_do_orcamento(orc, glosa_por_adm):
-    """Soma a glosa da admissão nas competências do período do orçamento."""
-    ini, fim = _mes(orc["inicio"]), _mes(orc["fim"])
-    linhas = [g for g in glosa_por_adm.get(orc["id_admissao"], [])
-              if g["competencia"] and ini and fim and ini <= g["competencia"] <= fim]
-    total = sum(comum.num(g["glosa"]) for g in linhas)
-    motivo = max(linhas, key=lambda g: comum.num(g["glosa"]))["motivo"] if linhas else None
-    return total, motivo
 
 
 _cache_taxas = {"expira": 0, "dados": {}}
@@ -94,11 +84,48 @@ def _pg(nome, params, padrao):
 # --------------------------------------------------------------------------
 
 
-def montar_lista(orcamentos, glosas, taxas, pacientes, analisados, foco, operadora="", busca="", hoje=None):
-    """Puro: linhas do Oracle + contexto da planilha -> linhas da tela e KPIs."""
-    glosa_por_adm = {}
-    for g in glosas:
-        glosa_por_adm.setdefault(g["id_admissao"], []).append(g)
+def historia_orcamentos(ids):
+    """{id_orcamento: história da conta} somando as guias (conta × admissão) que faturam cada orçamento.
+
+    inicio_aberta: competência mais recente de conta com faturável ainda não exportado (regra da senha).
+    """
+    if not ids:
+        return {}
+    guias = {(g["id_conta"], g["id_admissao"]) for g in historia.lotes("guias_por_orcamento", "IDS", ids)}
+    linhas = [l for l in historia.lotes("conta_paciente_por_conta", "IDS", {c for c, _ in guias})
+              if (l["id_conta"], l["id_admissao"]) in guias]
+    historia.marcar(linhas, historia.retornos({l["id_conta"] for l in linhas}))
+    saida = historia.agregar(linhas, "id_orcamento")
+    for l in linhas:
+        if l.get("situacao") != historia.EXPORTADA and comum.num(l.get("faturamento_grupo")) > 0:
+            h, inicio = saida[l["id_orcamento"]], _mes_dia(l.get("competencia"))
+            h["inicio_aberta"] = max(h.get("inicio_aberta") or inicio, inicio)
+    return saida
+
+
+def com_historia(orc, h):
+    """Orçamento + a história dele. 'faturado' passa a ser o faturável da história (o do relatório)."""
+    h = h or historia.vazia()
+    validade, inicio = orc.get("validade_senha"), h.get("inicio_aberta")
+    return {**orc, **h, "faturado": h["faturamento_grupo"],
+            "aberta_apos_validade": bool(validade and inicio and inicio > validade)}
+
+
+def criterio_senha():
+    """Premissas › Parâmetros gerais. Sem banco ou valor desconhecido: o padrão (período atendido)."""
+    try:
+        linhas = banco.consultar("SELECT valor FROM conciliacao.parametro WHERE chave = %s",
+                                 ("criterio_senha_vencida",), "critério da senha vencida")
+    except catalogo.ConsultaFalhou:
+        return orcamento_risco.PERIODO_ATENDIDO
+    valor = (linhas[0]["valor"] or "").strip() if linhas else ""
+    return valor if valor in (orcamento_risco.PERIODO_ATENDIDO, orcamento_risco.DATA_ENVIO) \
+        else orcamento_risco.PERIODO_ATENDIDO
+
+
+def montar_lista(orcamentos, historias, taxas, pacientes, analisados, foco, operadora="", busca="", hoje=None,
+                 criterio=orcamento_risco.PERIODO_ATENDIDO):
+    """Puro: linhas do Oracle + história da conta de cada orçamento -> linhas da tela e KPIs."""
     busca = (busca or "").strip().upper()
     saida = []
     for o in map(_datas, orcamentos):
@@ -107,20 +134,21 @@ def montar_lista(orcamentos, glosas, taxas, pacientes, analisados, foco, operado
         codigo = _codigo(o["id_paciente"])
         if busca and busca not in (str(o["id_orcamento"]), str(o.get("id_paciente")), (codigo or "").upper()):
             continue
-        glosa, motivo = _glosa_do_orcamento(o, glosa_por_adm)
-        linha = {**o, "paciente_codigo": codigo, "glosa": glosa, "motivo": motivo,
-                 "diferenca": comum.num(o["faturado"]) - comum.num(o["orcado"]),
+        o = com_historia(o, historias.get(o["id_orcamento"]))
+        linha = {**o, "paciente_codigo": codigo,
+                 "diferenca": comum.num(o["faturamento_grupo"]) - comum.num(o["orcado"]),
                  "analisado": o["id_orcamento"] in analisados}
         cancelado = o["situacao"] == "Cancelado"
-        aberto = comum.num(o["contas_abertas"]) > 0 or not comum.num(o["contas"])
+        # A prevenir: ainda há faturável por exportar, ou nada foi exportado. Conta aberta com R$ 0 não conta.
+        aberto = o["a_exportar"] > 1 or o["retorno"] in (None, "não exportado")
         # Busca por número/paciente acha em qualquer foco
         if not busca and foco == "prevenir" and (cancelado or not aberto):
             continue
-        if not busca and foco == "faturados" and (not comum.num(o["contas"]) or aberto):
+        if not busca and foco == "faturados" and aberto:
             continue
-        if not busca and foco == "com_glosa" and not glosa:
+        if not busca and foco == "com_glosa" and o["glosado"] != "sim":
             continue
-        linha["riscos"] = orcamento_risco.avaliar(o, taxas, pacientes, hoje)
+        linha["riscos"] = orcamento_risco.avaliar(o, taxas, pacientes, hoje, criterio)
         linha["nivel"] = orcamento_risco.nivel(linha["riscos"])
         saida.append(linha)
     saida.sort(key=lambda l: (-orcamento_risco.PESO.get(l["nivel"], 0), -comum.num(l["faturado"])))
@@ -135,13 +163,15 @@ def resumo(saida, foco=""):
          "hint": FOCOS.get(foco, "")},
         {"rotulo": "Orçado", "valor": soma("orcado"), "formato": "moeda_curta", "icone": "wallet", "tom": "violet",
          "hint": "preço × (qtd − qtd coberta)"},
-        {"rotulo": "Faturado", "valor": soma("faturado"), "formato": "moeda_curta", "icone": "receipt", "tom": "cyan",
-         "hint": f"diferença {layout.fmt_moeda_curta(soma('diferenca'))}"},
+        {"rotulo": "Faturável", "valor": soma("faturado"), "formato": "moeda_curta", "icone": "receipt", "tom": "cyan",
+         "hint": f"a exportar {layout.fmt_moeda_curta(soma('a_exportar'))} · "
+                 f"diferença {layout.fmt_moeda_curta(soma('diferenca'))}"},
         {"rotulo": "Risco alto", "valor": sum(1 for l in saida if l["nivel"] == "alta"), "formato": "int",
          "icone": "triangle-alert", "tom": "coral", "barra": comum.pct(sum(1 for l in saida if l["nivel"] == "alta"),
                                                                        len(saida)), "hint": "por regras, sem IA"},
-        {"rotulo": "Glosa (planilha)", "valor": soma("glosa"), "formato": "moeda_curta", "icone": "shield-x",
-         "tom": "magenta", "hint": f"{sum(1 for l in saida if l['glosa'])} orçamentos com glosa"},
+        {"rotulo": "Glosados", "valor": sum(1 for l in saida if l["glosado"] == "sim"), "formato": "int",
+         "icone": "shield-x", "tom": "magenta",
+         "hint": f"{sum(1 for l in saida if l['glosado'] == 'sem retorno')} sem retorno da operadora"},
     ]
 
 
@@ -151,20 +181,20 @@ def carregar(f):
     mes = f.get("mes") or datetime.date.today().strftime("%Y-%m")
     filtros = comum.Filtros(mes, f.get("unidade"), tipo=f.get("tipo"))
     orcamentos = fonte.rodar("orcamentos_lista", filtros.params())
-    admissoes = sorted({o["id_admissao"] for o in orcamentos if o["id_admissao"]})
+    ids = {o["id_orcamento"] for o in orcamentos}
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-        f_glosa = pool.submit(_pg, "orc_glosa_admissoes", {"ADMISSOES": admissoes}, [])
+        f_hist = pool.submit(historia_orcamentos, ids)
         f_taxas = pool.submit(taxas_operadora)
         f_pac = pool.submit(_pg, "orc_pacientes_glosados", {}, [])
-        glosas, taxas, pacientes = f_glosa.result(), f_taxas.result(), f_pac.result()
+        historias, taxas, pacientes = f_hist.result(), f_taxas.result(), f_pac.result()
     try:
         analisados = {l["id_orcamento"] for l in banco.consultar(
             "SELECT DISTINCT id_orcamento FROM conciliacao.analise_orcamento WHERE id_orcamento = ANY(%s)",
-            ([o["id_orcamento"] for o in orcamentos],), "orçamentos analisados")}
+            (sorted(ids),), "orçamentos analisados")}
     except catalogo.ConsultaFalhou:
         analisados = set()
-    linhas = montar_lista(orcamentos, glosas, taxas, {p["id_paciente"] for p in pacientes}, analisados,
-                          foco, f.get("operadora"), f.get("busca"))["linhas"]
+    linhas = montar_lista(orcamentos, historias, taxas, {p["id_paciente"] for p in pacientes}, analisados,
+                          foco, f.get("operadora"), f.get("busca"), criterio=criterio_senha())["linhas"]
     for l in linhas:
         l["nivel_ordem"] = orcamento_risco.PESO.get(l["nivel"], 0)
         l["por_que"] = " · ".join(r["texto"] for r in l["riscos"][:2])
@@ -204,13 +234,16 @@ CONSULTA = {
         {"campo": "inicio", "rotulo": "Início", "formato": "data", "sub": "fim"},
         {"campo": "situacao", "rotulo": "Situação"},
         {"campo": "orcado", "rotulo": "Orçado", "formato": "moeda", "num": True},
-        {"campo": "faturado", "rotulo": "Faturado", "formato": "moeda", "num": True},
-        {"campo": "diferenca", "rotulo": "Diferença", "formato": "moeda", "num": True},
-        {"campo": "glosa", "rotulo": "Glosa", "formato": "moeda", "num": True, "sub": "motivo"},
+        *historia.CASCATA,
+        historia.COLUNA_GLOSADO,
+        {"campo": "diferenca", "rotulo": "Faturável − orçado", "formato": "moeda", "num": True},
         {"campo": "por_que", "rotulo": "Por quê", "formato": "texto_longo"},
         {"campo": "nivel", "rotulo": "Nível de risco", "so_csv": True},
         {"campo": "operadora", "rotulo": "Operadora", "so_csv": True},
         {"campo": "fim", "rotulo": "Fim", "formato": "data", "so_csv": True},
+        {"campo": "a_exportar", "rotulo": "Faturável a exportar", "so_csv": True},
+        {"campo": "retorno", "rotulo": "Retorno da operadora", "so_csv": True},
+        {"campo": "validade_senha", "rotulo": "Validade da senha", "formato": "data", "so_csv": True},
     ],
     "carregar": carregar,
     "resumo": lambda linhas: resumo(linhas),
@@ -232,13 +265,15 @@ def montar_contexto(id_orcamento):
     if not dados["orcamento_cabecalho"]:
         return None
     orc = _datas(dados["orcamento_cabecalho"][0])
+    orc = com_historia(orc, historia_orcamentos({id_orcamento}).get(id_orcamento))
     ini, fim = _mes(orc["inicio"]), _depois(_mes(orc["fim"]))
     glosas = _pg("orc_glosa_linhas", {"ADMISSAO": orc["id_admissao"], "DT_INI": ini, "DT_FIM": fim}, [])
     historico = _pg("orc_hist_operadora", {"OPERADORA": orc["operadora"]}, [])
     taxas = taxas_operadora()
     pacientes = {x["id_paciente"] for x in _pg("orc_pacientes_glosados", {}, [])}
     comparacao = orcamento_risco.comparar_itens(dados["orcamento_itens"], dados["orcamento_faturado_itens"])
-    riscos = orcamento_risco.avaliar(orc, taxas, pacientes) + orcamento_risco.avaliar_itens(comparacao)
+    riscos = orcamento_risco.avaliar(orc, taxas, pacientes, criterio=criterio_senha()) + \
+        orcamento_risco.avaliar_itens(comparacao)
     itens = dados["orcamento_itens"]
     categorias = {}
     for i in itens:

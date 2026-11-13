@@ -25,7 +25,7 @@ ITENS = [
      "também marca contas de operadora."},
     {"chave": "fatura", "titulo": "Fatura operadora",
      "negocio": "O que vai na nota para a operadora e vira contas a receber.",
-     "tecnico": "Faturamento do grupo − particular."},
+     "tecnico": "Faturável − particular."},
     {"chave": "tributos", "titulo": "Tributos da conta (ERP)",
      "negocio": "IR, PIS, COFINS, ISS e CSLL lançados na conta (~8,7%). Não é a retenção da operadora, que varia "
      "por convênio (ver Glosa (xml/planilha)).",
@@ -45,7 +45,7 @@ def montar(linhas):
         ("Bruto lançado", t["bruto"], "total", "tudo lançado, a preço de tabela"),
         ("Incluso em pacote", t["pacote"], "neg", "coberto por diária/pacote, não cobrado"),
         ("Pré-auditoria", t["pre_auditoria"], "neg", "glosa interna: cortado antes do envio"),
-        ("Faturamento do grupo", t["faturamento_grupo"], "total", "o que foi cobrado"),
+        ("Faturável", t["faturamento_grupo"], "total", "o que foi cobrado"),
         ("Particular", t["particular"], "neg", "cobrado do paciente"),
         ("Fatura operadora", t["fatura_operadora"], "total", "vai na NF, gera contas a receber"),
     ])

@@ -1,0 +1,17 @@
+{% import "reports/_macros.html" as rp %}
+{{ rp.grafico(b.slug ~ '-meses', bloco.grafico, 240) }}
+{% if bloco.variacao is not none %}
+<p class="rp-sub">Último mês {{ 'acima' if bloco.variacao > 0 else 'abaixo' }} da média dos anteriores ({{ bloco.media | moeda_curta }}) em <b>{{ bloco.variacao | abs | pct }}</b>.</p>
+{% endif %}
+<div class="rp-tabela-wrap" style="max-height: 260px">
+  <table class="rp-tabela rp-tabela--compacta">
+    <thead><tr><th>Mês</th><th class="num">Pacientes</th><th class="num">Por paciente</th><th class="num">Custo</th></tr></thead>
+    <tbody>
+      {% for s in bloco.serie | reverse %}
+      <tr><td>{{ s.rotulo }}</td><td class="num">{{ s.pacientes | valor('int') }}</td>
+        <td class="num">{% if s.por_paciente is not none %}{{ s.por_paciente | moeda }}{% else %}—{% endif %}</td>
+        <td class="num">{{ s.custo | moeda_curta }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

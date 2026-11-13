@@ -30,7 +30,7 @@
 
   {{ rp.kpis([
     {'rotulo': 'Orçado', 'valor': l.orcado, 'formato': 'moeda_curta', 'icone': 'clipboard-check', 'tom': 'cyan', 'hint': ('orçamento ' ~ l.id_orcamento) if l.id_orcamento else 'sem orçamento'},
-    {'rotulo': 'Faturamento', 'valor': l.faturamento_grupo, 'formato': 'moeda_curta', 'icone': 'banknote', 'tom': 'blue', 'hint': (ctx.itens | length) ~ ' itens nesta conta (fora imposto)'},
+    {'rotulo': 'Faturável', 'valor': l.faturamento_grupo, 'formato': 'moeda_curta', 'icone': 'banknote', 'tom': 'blue', 'hint': (ctx.itens | length) ~ ' itens nesta conta (fora imposto)'},
     {'rotulo': 'Pré-auditoria', 'valor': l.pre_auditoria, 'formato': 'moeda_curta', 'icone': 'scan-search', 'tom': 'violet', 'hint': (ctx.alterados | length) ~ ' item(ns) alterado(s)'},
     {'rotulo': 'Fatura operadora', 'valor': l.fatura_operadora, 'formato': 'moeda_curta', 'icone': 'building-2', 'tom': 'teal', 'hint': 'desconto ' ~ (l.desconto_informativo | moeda)},
     {'rotulo': 'Glosa', 'valor': ctx.glosas | sum(attribute='glosa'), 'formato': 'moeda_curta', 'icone': 'shield-x', 'tom': 'coral', 'hint': ('(xml)' if ctx.tiss_guias else '(planilha)') ~ (' · do paciente na conta' if ctx.glosa_do_paciente else '')},

@@ -492,3 +492,34 @@ SELECT (SELECT id FROM conciliacao.carga WHERE ativa AND tipo = 'glosa'), -t.gui
  WHERE t.glosa > 0 AND NOT EXISTS (SELECT 1 FROM conciliacao.cruzamento x
                                     JOIN conciliacao.carga c ON c.id = x.carga_id AND c.ativa AND c.tipo = 'glosa'
                                    WHERE x.id_conta = t.id_conta AND x.id_admissao = t.id_admissao);
+
+-- v11: tendência clínica por IA (src/reports/evolucao_ia.py), por admissão × competência.
+-- Sem payload: é texto clínico; o hash basta para reaproveitar a análise.
+CREATE TABLE IF NOT EXISTS conciliacao.analise_evolucao (
+    id             bigserial PRIMARY KEY,
+    id_admissao    bigint NOT NULL,
+    competencia    text NOT NULL,
+    criado_em      timestamptz NOT NULL DEFAULT now(),
+    autor          text,
+    provedor       text,
+    modelo         text,
+    payload_hash   text NOT NULL,
+    resultado      jsonb NOT NULL,
+    tokens_entrada integer,
+    tokens_saida   integer
+);
+CREATE INDEX IF NOT EXISTS analise_evolucao_adm ON conciliacao.analise_evolucao (competencia, id_admissao, criado_em DESC);
+
+-- v12: parâmetros gerais (Premissas › Parâmetros). Linha padrão já criada; a edição muda o valor.
+CREATE TABLE IF NOT EXISTS conciliacao.parametro (
+    id        bigserial,
+    chave     text PRIMARY KEY,
+    valor     text NOT NULL,
+    descricao text
+);
+INSERT INTO conciliacao.parametro (chave, valor, descricao) VALUES
+    ('criterio_senha_vencida', 'periodo_atendido',
+     'periodo_atendido (padrão): risco se a senha vence antes do fim do período do orçamento ou se há faturável '
+     'a exportar em conta iniciada depois da validade. data_envio: risco se a senha venceu e ainda há faturável '
+     'a exportar.')
+ON CONFLICT (chave) DO NOTHING;

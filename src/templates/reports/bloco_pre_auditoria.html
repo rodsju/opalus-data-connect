@@ -13,7 +13,7 @@
 {% if bloco.motivos %}
 <div class="rp-tabela-wrap" style="max-height: 360px">
   <table class="rp-tabela rp-tabela--compacta">
-    <thead><tr><th>Motivo</th><th>Origem</th><th class="num">Itens</th><th class="num">Contas</th><th class="num">Pré-auditoria</th><th class="num">Part.</th><th class="num">Glosados depois</th></tr></thead>
+    <thead><tr><th>Motivo</th><th>Origem</th><th class="num">Itens</th><th class="num">Contas</th><th class="num">Pré-auditoria</th><th class="num" title="Participação no total">%</th><th class="num">Glosados depois</th></tr></thead>
     <tbody>
       {% for l in bloco.motivos %}
       <tr>

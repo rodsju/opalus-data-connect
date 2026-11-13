@@ -303,9 +303,9 @@ PRE_AUDITORIA = {
 # Registro
 # --------------------------------------------------------------------------
 
-from . import conta_paciente, faturas, orcamentos  # noqa: E402
+from . import conta_paciente, evolucao, faturas, orcamentos  # noqa: E402
 
 CONSULTAS = {c["slug"]: c for c in (faturas.CONSULTA, conta_paciente.CONSULTA, GLOSAS, PRE_AUDITORIA,
-                                    orcamentos.CONSULTA, PACIENTES)}
+                                    orcamentos.CONSULTA, PACIENTES, evolucao.CONSULTA)}
 lista.CONSULTAS_MENU[:] = [{"slug": c["slug"], "titulo": c["titulo"], "icone": c["icone"],
                             "href": f"/consultas/{c['slug']}", "ativo": False} for c in CONSULTAS.values()]

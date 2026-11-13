@@ -7,14 +7,11 @@ faturado em mais de uma conta).
 """
 
 from ..reports import comum
-from . import conta_paciente
-
-SOMAS = ("bruto", "pacote", "pre_auditoria", "desconto_informativo", "faturamento_grupo", "particular",
-         "fatura_operadora", "tributos_erp", "glosa_iw", "itens", "itens_pre_auditados")
-
+from . import conta_paciente, historia
 
 def agrupar(linhas):
-    """Linhas da Conta do paciente -> uma por conta. Puro."""
+    """Linhas da Conta do paciente -> uma por conta, com as somas da história da conta. Puro."""
+    somas = historia.agregar(linhas, "id_conta")
     contas = {}
     for l in linhas:
         c = contas.get(l["id_conta"])
@@ -22,11 +19,8 @@ def agrupar(linhas):
             c = contas[l["id_conta"]] = {
                 k: l.get(k) for k in ("id_conta", "competencia", "protocolo", "data_entrega", "nota_fiscal", "nf_origem",
                                       "situacao", "unidade", "operadora", "pagador")}
-            c.update({k: 0.0 for k in SOMAS})
-            c.update(_pacientes=set(), _orcamentos={}, _tipos=set(), _origens=set(), glosa=None, recuperado=None,
-                     perda=None)
-        for k in SOMAS:
-            c[k] += comum.num(l.get(k))
+            c.update(somas[l["id_conta"]])
+            c.update(_pacientes=set(), _orcamentos={}, _tipos=set(), _origens=set())
         c["_pacientes"].add(l.get("id_admissao"))
         if l.get("id_orcamento"):
             c["_orcamentos"][l["id_orcamento"]] = l.get("orcado")
@@ -34,9 +28,6 @@ def agrupar(linhas):
             c["_tipos"].add(l["tipo_nome"])
         if l.get("origem_glosa"):
             c["_origens"].update(l["origem_glosa"].split("/"))
-        for k in ("glosa", "recuperado", "perda"):  # já vem uma vez por paciente na conta
-            if l.get(k) is not None:
-                c[k] = (c[k] or 0) + l[k]
     saida = []
     for c in contas.values():
         orcados = [v for v in c["_orcamentos"].values() if v is not None]
@@ -90,7 +81,7 @@ def resumo(contas):
     return [
         {"rotulo": "Faturas", "valor": len(contas), "formato": "int", "icone": "receipt", "tom": "blue",
          "hint": f"{sum(1 for c in contas if c.get('nota_fiscal'))} com nota fiscal"},
-        {"rotulo": "Faturamento", "valor": soma("faturamento_grupo"), "formato": "moeda_curta", "icone": "banknote",
+        {"rotulo": "Faturável", "valor": soma("faturamento_grupo"), "formato": "moeda_curta", "icone": "banknote",
          "tom": "cyan"},
         {"rotulo": "Pré-auditoria", "valor": soma("pre_auditoria"), "formato": "moeda_curta", "icone": "scan-search",
          "tom": "violet"},
@@ -102,7 +93,7 @@ def resumo(contas):
 
 
 CONSULTA = {
-    "slug": "faturas", "titulo": "Faturas", "icone": "receipt", "larga": True,
+    "slug": "faturas", "titulo": "Faturas", "icone": "receipt",
     "descricao": "Uma linha por fatura (conta): nota fiscal, situação, pacientes e orçamentos, a cascata (bruto, "
                  "pacote, pré-auditoria, desconto, faturamento, fatura da operadora) e a glosa da planilha. A conta "
                  "abre a Conta do paciente com os pacientes e orçamentos dela.",
@@ -130,13 +121,8 @@ CONSULTA = {
         {"campo": "pacientes", "rotulo": "Pacientes", "formato": "int", "num": True},
         {"campo": "orcamentos", "rotulo": "Orçamentos", "formato": "int", "num": True},
         {"campo": "orcado", "rotulo": "Orçado", "formato": "moeda", "num": True},
-        {"campo": "bruto", "rotulo": "Bruto", "formato": "moeda", "num": True},
-        {"campo": "pacote", "rotulo": "Pacote", "formato": "moeda", "num": True},
-        {"campo": "pre_auditoria", "rotulo": "Pré-auditoria", "formato": "moeda", "num": True},
+        *historia.COLUNAS,
         {"campo": "desconto_informativo", "rotulo": "Desconto", "formato": "moeda", "num": True},
-        {"campo": "faturamento_grupo", "rotulo": "Faturamento", "formato": "moeda", "num": True},
-        {"campo": "fatura_operadora", "rotulo": "Fatura operadora", "formato": "moeda", "num": True},
-        {"campo": "glosa", "rotulo": "Glosa", "formato": "moeda", "num": True, "sub": "origem_rotulo"},
         {"campo": "recuperado", "rotulo": "Recuperado (planilha)", "formato": "moeda", "num": True},
         {"campo": "perda", "rotulo": "Perda (planilha)", "formato": "moeda", "num": True},
         {"campo": "protocolo", "rotulo": "Protocolo", "so_csv": True},
@@ -147,7 +133,8 @@ CONSULTA = {
         {"campo": "tipos", "rotulo": "Tipos de atendimento", "so_csv": True},
         {"campo": "itens", "rotulo": "Itens", "so_csv": True},
         {"campo": "itens_pre_auditados", "rotulo": "Itens pré-auditados", "so_csv": True},
-        {"campo": "particular", "rotulo": "Particular", "so_csv": True},
+        {"campo": "origem_rotulo", "rotulo": "Origem da glosa", "so_csv": True},
+        {"campo": "retorno", "rotulo": "Retorno da operadora", "so_csv": True},
         {"campo": "tributos_erp", "rotulo": "Tributos (ERP)", "so_csv": True},
         {"campo": "glosa_iw", "rotulo": "Glosa IW (ERP)", "so_csv": True},
     ],
