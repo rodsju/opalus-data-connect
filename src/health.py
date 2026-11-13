@@ -100,29 +100,6 @@ def checar_oracle(prefixo="ORACLE"):
     return True, detalhe, ms
 
 
-def checar_bigquery():
-    """Conta as contas de CAPPAYMENT no dataset configurado (BQ_PROJECT/BQ_DATASET).
-
-    Prova de uma vez que o ADC vale, que a conta pode rodar job e que o dataset
-    tem as tabelas do ERP. Falhar aqui NAO derruba o status HTTP.
-    """
-    from .reports import fonte_bq
-
-    inicio = time.perf_counter()
-    try:
-        cfg = fonte_bq._config()
-        cfg["timeout"] = min(cfg["timeout"], 15)
-        linha = fonte_bq.executar(fonte_bq.qualificar("SELECT COUNT(*) AS n FROM {ds}.CAPPAYMENT", cfg), {}, cfg)[0]
-    except Exception as e:  # noqa: BLE001 -- vira detalhe na pagina
-        ms = (time.perf_counter() - inicio) * 1000
-        motivo = getattr(e, "motivo", None) or str(e).strip().splitlines()[0]
-        dica = getattr(e, "dica", "")
-        logger.error("BigQuery nao respondeu em %s: %s", fonte_bq.destino(), e)
-        return False, f"{motivo} — {dica}" if dica else motivo, ms
-    ms = (time.perf_counter() - inicio) * 1000
-    return True, f"{linha['n']:,} contas em {cfg['projeto']}.{cfg['dataset']}.CAPPAYMENT.".replace(",", "."), ms
-
-
 def checar_catalogo():
     """Le a linha de estado da extracao: prova que o Postgres responde e que o
     catalogo foi populado.
@@ -156,11 +133,8 @@ def gerar_pagina(usuario=None):
     # catalogo e critico -- e dele que as paginas leem. O Oracle so e preciso na
     # hora de remapear, e fora da VPN ele e inalcancavel por definicao; marcar
     # ele como critico faria a sonda acusar doente um servico que esta servindo.
-    from .reports import fonte_bq
-
-    bq_ok, bq_detalhe, bq_ms = checar_bigquery()
-    # Oracle: legado, a caminho de sair. Aparece, mas nao conta para o alerta.
     origens = [(titulo, prefixo, *checar_oracle(prefixo)) for titulo, prefixo in ORIGENS_ORACLE]
+    oracle_ok = all(o[2] for o in origens)
 
     checagens = [
         {
@@ -178,9 +152,6 @@ def gerar_pagina(usuario=None):
             "ms": ms,
         },
     ]
-    checagens.append(
-        {"titulo": "Origem (BigQuery)", "ok": bq_ok, "critico": False, "detalhe": bq_detalhe, "ms": bq_ms}
-    )
     checagens += [
         {"titulo": titulo, "ok": o_ok, "critico": False, "detalhe": o_detalhe, "ms": o_ms}
         for titulo, _, o_ok, o_detalhe, o_ms in origens
@@ -189,7 +160,6 @@ def gerar_pagina(usuario=None):
         ("Ambiente", layout.AMBIENTE),
         ("Projeto", layout.PROJETO),
         ("Catálogo", destino_do_catalogo()),
-        ("Origem (BigQuery)", fonte_bq.destino()),
         *[(titulo, destino_do_oracle(prefixo)) for titulo, prefixo in ORIGENS_ORACLE],
         ("Usuário identificado", usuario["email"] if usuario else "—"),
     ]
@@ -200,7 +170,7 @@ def gerar_pagina(usuario=None):
         usuario,
         "/health",
         catalogo_ok=ok,
-        origem_ok=bq_ok,
+        oracle_ok=oracle_ok,
         checagens=checagens,
         config=config,
     )

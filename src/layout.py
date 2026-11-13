@@ -32,42 +32,6 @@ SSO_URL = SSO_POR_AMBIENTE.get(AMBIENTE, SSO_POR_AMBIENTE["hml"])
 
 MENU = [
     {
-        "titulo": "Reports",
-        "itens": [
-            {"href": "/reports/faturamento", "icone": "receipt", "rotulo": "Faturamento"},
-            {"href": "/reports/glosa-planilha", "icone": "sheet", "rotulo": "Glosa (xml/planilha)"},
-            {"href": "/reports/glosa-motivos", "icone": "tags", "rotulo": "Motivos de glosa"},
-            {"href": "/reports/glosa-iw", "icone": "shield-x", "rotulo": "Glosa IW"},
-            {"href": "/reports/orcamentos", "icone": "clipboard-list", "rotulo": "Orçamentos"},
-            {"href": "/reports/medicamentos", "icone": "pill", "rotulo": "Medicamentos"},
-            {"href": "/reports/ocupacao", "icone": "bed", "rotulo": "Ocupação"},
-            {"href": "/reports/auditoria", "icone": "scale", "rotulo": "Auditoria de contas"},
-            {"href": "/reports/blocos", "icone": "layout-grid", "rotulo": "Blocos de relatório"},
-        ],
-    },
-    {
-        "titulo": "Consultas",
-        "itens": [
-            {"href": "/consultas/faturas", "icone": "receipt", "rotulo": "Faturas"},
-            {"href": "/consultas/conta-paciente", "icone": "file-stack", "rotulo": "Conta do paciente"},
-            {"href": "/consultas/glosas", "icone": "list-x", "rotulo": "Glosas"},
-            {"href": "/consultas/pre-auditoria", "icone": "scan-search", "rotulo": "Pré-auditoria"},
-            {"href": "/consultas/orcamentos", "icone": "clipboard-check", "rotulo": "Orçamentos"},
-            {"href": "/consultas/pacientes", "icone": "bed", "rotulo": "Pacientes em atendimento"},
-            {"href": "/consultas/evolucao", "icone": "activity", "rotulo": "Evolução clínica"},
-        ],
-    },
-    {
-        "titulo": "Conciliação",
-        "itens": [
-            {"href": "/conciliacao/tiss", "icone": "file-code-2", "rotulo": "Retornos TISS (xml)"},
-            {"href": "/conciliacao/cargas", "icone": "upload", "rotulo": "Cargas (planilha)"},
-            {"href": "/conciliacao/glosa-erp", "icone": "git-compare-arrows", "rotulo": "Qualidade do cruzamento"},
-            {"href": "/conciliacao/premissas", "icone": "sliders-horizontal", "rotulo": "Premissas"},
-            {"href": "/conciliacao/regras", "icone": "function-square", "rotulo": "Regras da planilha"},
-        ],
-    },
-    {
         "titulo": "Oracle",
         "itens": [
             {"href": "/oracle", "icone": "gauge", "rotulo": "Visão geral"},

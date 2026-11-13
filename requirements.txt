@@ -1,6 +1,5 @@
 # Dependencias diretas do runtime. O pytest fica em requirements-dev.txt e nao
 # entra na imagem de producao.
-google-cloud-bigquery>=3.17.2
 google-auth>=2.29.0
 google-api-core>=2.19.1
 fastapi==0.141.1
@@ -10,8 +9,8 @@ uvicorn[standard]==0.30.0
 
 # Le o catalogo do schema Oracle gravado por scripts/mapear_oracle.py
 psycopg[binary]>=3.2
-# Driver Oracle: o mapeador e os /reports (src/reports/fonte_oracle.py) consultam
-# o Oracle ao vivo. Modo thin, sem Instant Client.
+# Driver Oracle: o mapeador (scripts/mapear_oracle.py) e o /health consultam o
+# Oracle ao vivo. Modo thin, sem Instant Client.
 oracledb>=3.0
 
 # Provedores de IA para as descricoes de campo (src/ia.py): o SDK de cada

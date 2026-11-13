@@ -6,15 +6,15 @@
 {% block descricao %}Mostramos o estado do serviço e das dependências que ele usa para responder às consultas.{% endblock %}
 
 {% block miolo %}
-{% if catalogo_ok and origem_ok %}
+{% if catalogo_ok and oracle_ok %}
 {% call alerta(icone='check-circle') %}
-<strong>Tudo certo.</strong> O serviço responde, alcança o catálogo e alcança a origem no BigQuery.
+<strong>Tudo certo.</strong> O serviço responde, alcança o catálogo e alcança as origens Oracle.
 {% endcall %}
 {% elif catalogo_ok %}
 {% call alerta(tone='warning', icone='alert-triangle') %}
-<strong>O catálogo responde, mas o BigQuery não.</strong>
-As páginas do catálogo continuam funcionando; os relatórios e as consultas, que
-leem o ERP no BigQuery, vão falhar até isso normalizar. Confira o detalhe abaixo.
+<strong>O catálogo responde, mas alguma origem Oracle não.</strong>
+As páginas continuam funcionando — elas leem do catálogo. O que não dá para fazer
+agora é remapear (<code>make catalogo</code>, <code>make amostras</code>).
 {% endcall %}
 {% else %}
 {% call alerta(tone='danger', icone='alert-circle') %}
