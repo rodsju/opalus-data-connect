@@ -16,4 +16,3 @@ main_test.go
 bin/
 dist/
 coverage/
-ds_opalus/
