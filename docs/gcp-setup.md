@@ -17,7 +17,7 @@ Em hml o app também alcança o **Oracle do IW pela VPN** do projeto (seção 8)
 Este app é **dono de duas coisas que o `opalus-atlas-dash-app` também usa**:
 
 - o database `atlas-connect`, onde fica `catalogo.provedor_ia` (o dash lê só essa tabela);
-- o secret `ia-senha-mestra`, que cifra as chaves dos provedores. Os dois apps precisam da mesma senha.
+- a senha `IA_SENHA_MESTRA`, que cifra as chaves dos provedores. Os dois apps precisam da mesma senha (secret do GitHub em cada repo, passo 3).
 
 Por isso este setup vem **antes** do setup do dash.
 
@@ -37,7 +37,6 @@ export SA=${SA_NAME}@${PROJECT}.iam.gserviceaccount.com
 # o usuario IAM no Postgres e o e-mail da SA sem ".gserviceaccount.com"
 export DB_USER=${SA_NAME}@${PROJECT}.iam
 export DEPLOY_SA=atlas-github-deploy@${PROJECT}.iam.gserviceaccount.com
-export SECRET=ia-senha-mestra
 # O repo fica na conta rodsju, nao na org saudeopalus: o provider do WIF tem uma
 # excecao so para ele (passo 4)
 export GH_ORG=rodsju
@@ -99,21 +98,16 @@ gcloud iam service-accounts add-iam-policy-binding $SA --project=$PROJECT \
   --member=serviceAccount:$DEPLOY_SA --role=roles/iam.serviceAccountUser --format=none
 ```
 
-## 3. Secret `ia-senha-mestra` (compartilhado com o dash)
+## 3. Senha mestra `IA_SENHA_MESTRA` (compartilhada com o dash)
 
-Use a **mesma** `IA_SENHA_MESTRA` do `.env` local se for importar o catálogo local
-(passo 5). As chaves dos provedores foram cifradas com ela, e com outra senha
-o `pgp_sym_decrypt` recusa.
+Fica num **secret do GitHub** (`IA_SENHA_MESTRA` em hml, `IA_SENHA_MESTRA_PRD` em
+prd), e o workflow passa o valor como variável de ambiente no `gcloud run deploy`.
+Não usamos o Secret Manager para ela: o secret `ia-senha-mestra` não existe no
+projeto, e o deploy falhava com `Permission denied on secret`. O dash faz igual.
 
-```bash
-# Cola a senha e da Ctrl-D: ela nao fica no historico do shell
-gcloud secrets create $SECRET --project=$PROJECT --replication-policy=automatic --data-file=-
-
-gcloud secrets add-iam-policy-binding $SECRET --project=$PROJECT \
-  --member=serviceAccount:$SA --role=roles/secretmanager.secretAccessor --format=none
-```
-
-O acesso da SA do dash a este secret é dado no setup do dash.
+Use a **mesma** `IA_SENHA_MESTRA` do `.env` local (e do dash). As chaves dos
+provedores foram cifradas com ela, e com outra senha o `pgp_sym_decrypt` recusa.
+Cadastre em Settings → Secrets and variables → Actions do repo, junto com os do passo 4.
 
 ## 4. GitHub Actions: liberar o repositório e os secrets
 
@@ -279,7 +273,7 @@ export URL=$(gcloud run services describe $SERVICE --project=$PROJECT --region=$
 | `connection timeout` | `VPC_NETWORK`/`VPC_SUBNET` e o endpoint PSC `ACCEPTED` |
 | `password authentication failed` / `IAM authentication failed` | `cloudsql.iam_authentication`, `roles/cloudsql.instanceUser` e o usuário na URI (`atlas-app-connect%40<projeto>.iam`) |
 | `permission denied for schema catalogo` | o passo 5.4 |
-| `Senha mestra não configurada` | o secret do passo 3 e o `secretAccessor` |
+| `Senha mestra não configurada` | o secret `IA_SENHA_MESTRA` do GitHub (passo 3) |
 | `Não conseguimos decifrar a chave` | o secret tem uma senha diferente da que cifrou os provedores importados |
 | `/health`: Oracle com `DPY-6005` / timeout | `VPC_SUBNET` precisa ser a `atlas-psc-subnet` (seção 8) e o túnel precisa estar `ESTABLISHED` |
 | `/health`: Oracle com `ORA-01017` | o secret `atlas-iw-oracle-ds-iw-password` e o `ORACLE_USER` (`DS_IW`) |
@@ -391,9 +385,10 @@ Se o DBA ligar o NNE como obrigatório, o app passa a falhar no login. Há duas 
 | `RUNTIME_SERVICE_ACCOUNT` | `atlas-app-connect@<projeto>.iam.gserviceaccount.com` |
 | `POSTGRES_DSN` | `postgresql://atlas-app-connect%40<projeto>.iam@atlas-pg.atlas.internal:5432/atlas-connect?sslmode=require` |
 | em `--set-env-vars` | `DB_IAM_AUTH=true` (o token da SA vai como senha, `src/catalogo.py`) |
-| em `--set-secrets` | `IA_SENHA_MESTRA=ia-senha-mestra:latest` (passo 3); em hml também `ORACLE_PASSWORD=atlas-iw-oracle-ds-iw-password:latest` (seção 8) |
+| em `--set-env-vars` (lista `^|^`) | `IA_SENHA_MESTRA` vinda do secret do GitHub (passo 3) |
+| em `--set-secrets` (só hml) | `ORACLE_PASSWORD=atlas-iw-oracle-ds-iw-password:latest` (seção 8) |
 | `ORACLE_*` (só hml) | `192.168.30.4` / `1521` / `IWTST` / schema `DBIWGERIATRICS` / usuário `DS_IW` |
 | `VPC_NETWORK` / `VPC_SUBNET` | `atlas-vpc` / hml: `atlas-psc-subnet` (seletor da VPN, seção 8); prd: `atlas-services-subnet` |
 | `IMAGE` | `<região>-docker.pkg.dev/<projeto>/atlas-ar-apps/atlas-connect` |
-| secrets (hml) | `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT` (passo 4) |
+| secrets (hml) | `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT` (passo 4), `IA_SENHA_MESTRA` (passo 3) |
 | secrets (prd) | os mesmos com `_PRD` |

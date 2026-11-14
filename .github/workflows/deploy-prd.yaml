@@ -56,13 +56,18 @@ jobs:
           docker push "${IMAGE_TAG}"
           echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
 
-      # IA_SENHA_MESTRA vem do Secret Manager (ia-senha-mestra), o MESMO secret do
-      # dash: cifra e decifra as chaves dos provedores de IA.
+      # IA_SENHA_MESTRA vem do secret do GitHub (IA_SENHA_MESTRA_PRD) e entra como
+      # variavel de ambiente -- a MESMA senha do dash: cifra e decifra as chaves
+      # dos provedores de IA. Lista com delimitador "|" (^|^): a senha em base64
+      # pode ter "=", "+" e "/".
       # --no-cpu-throttling nos dois ambientes: o lote de descricoes/vetores roda
       # num subprocesso em segundo plano (src/lote.py), fora da requisicao.
       # x-opalus-user-email NUNCA entra aqui: quem identifica o usuario e o LB.
       - name: Deploy Cloud Run
+        env:
+          IA_SENHA_MESTRA: ${{ secrets.IA_SENHA_MESTRA_PRD }}
         run: |
+          test -n "${IA_SENHA_MESTRA}" || { echo "secret IA_SENHA_MESTRA_PRD vazio no GitHub"; exit 1; }
           set -euo pipefail
           gcloud run deploy "${SERVICE_NAME}" \
             --project="${PROJECT_ID}" \
@@ -83,8 +88,7 @@ jobs:
             --network="${VPC_NETWORK}" \
             --subnet="${VPC_SUBNET}" \
             --vpc-egress=private-ranges-only \
-            --set-secrets="IA_SENHA_MESTRA=ia-senha-mestra:latest" \
-            --set-env-vars="PROJECT_ID=${PROJECT_ID},ENV=prd,LOG_LEVEL=INFO,DB_IAM_AUTH=true,POSTGRES_DSN=${POSTGRES_DSN}"
+            --set-env-vars="^|^PROJECT_ID=${PROJECT_ID}|ENV=prd|LOG_LEVEL=INFO|DB_IAM_AUTH=true|POSTGRES_DSN=${POSTGRES_DSN}|IA_SENHA_MESTRA=${IA_SENHA_MESTRA}"
 
       - name: Print URL
         run: |
