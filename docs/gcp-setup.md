@@ -38,7 +38,9 @@ export SA=${SA_NAME}@${PROJECT}.iam.gserviceaccount.com
 export DB_USER=${SA_NAME}@${PROJECT}.iam
 export DEPLOY_SA=atlas-github-deploy@${PROJECT}.iam.gserviceaccount.com
 export SECRET=ia-senha-mestra
-export GH_ORG=saudeopalus
+# O repo fica na conta rodsju, nao na org saudeopalus: o provider do WIF tem uma
+# excecao so para ele (passo 4)
+export GH_ORG=rodsju
 export GH_REPO=opalus-data-connect
 export POOL_ID=atlas-github-pool          # prd: CONFERIR
 export PROVIDER_ID=github                 # prd: CONFERIR
@@ -115,8 +117,24 @@ O acesso da SA do dash a este secret é dado no setup do dash.
 
 ## 4. GitHub Actions: liberar o repositório e os secrets
 
-O pool, o provider e os papéis da SA de deploy já existem (passo 0). Falta só
-liberar este repositório:
+O pool, o provider e os papéis da SA de deploy já existem (passo 0).
+
+**Este repositório não está na org `saudeopalus`**, e sim em `rodsju`. O
+`attribute-condition` do provider aceita a org inteira e, fora dela, só exceções
+nomeadas, presas ao `repository_owner_id` da conta (`80115618`). Em hml a exceção já
+foi incluída (feito em 14/11/2026, junto com o binding abaixo):
+
+```bash
+gcloud iam workload-identity-pools providers update-oidc $PROVIDER_ID --project=$PROJECT \
+  --location=global --workload-identity-pool=$POOL_ID \
+  --attribute-condition="(assertion.repository_owner == 'saudeopalus' && assertion.repository_owner_id == '339797207') || (assertion.repository == 'rodsju/opalus-atlas-dash-app' && assertion.repository_owner_id == '80115618') || (assertion.repository == 'rodsju/opalus-data-connect' && assertion.repository_owner_id == '80115618')"
+```
+
+O `update-oidc` **substitui** a condição inteira. Antes de rodar, confira a atual com
+`providers describe` e mantenha o que já existe. Se o repo for para a org
+`saudeopalus`, a exceção deixa de ser necessária.
+
+Liberar o repositório na SA de deploy:
 
 ```bash
 gcloud iam service-accounts add-iam-policy-binding $DEPLOY_SA --project=$PROJECT \
