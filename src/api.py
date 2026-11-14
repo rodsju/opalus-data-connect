@@ -1,4 +1,5 @@
-"""API JSON de escrita do catalogo: descricao e rotulo vindos de fora.
+"""
+API JSON de escrita do catalogo: descricao e rotulo vindos de fora.
 
 O resto do app e HTML com POST de formulario. Aqui e JSON, para quem mantem a
 documentacao fora da tela -- planilha revisada pela area de negocio, script de
