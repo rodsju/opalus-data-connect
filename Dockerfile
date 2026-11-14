@@ -1,4 +1,4 @@
-male FROM python:3.11.15-alpine3.24
+FROM python:3.11.15-alpine3.24
 
 ENV PYTHONUNBUFFERED=True
 ENV PORT=8080
