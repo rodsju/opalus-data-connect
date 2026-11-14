@@ -45,7 +45,7 @@ export POOL_ID=atlas-github-pool          # prd: CONFERIR
 export PROVIDER_ID=github                 # prd: CONFERIR
 export PROJECT_NUMBER=$(gcloud projects describe $PROJECT --format='value(projectNumber)')
 # bucket temporario para importar o catalogo local no Cloud SQL (passo 5)
-export BUCKET=${PROJECT}-atlas-import
+export BUCKET=atlas-datalake-raw-hml   # bucket do datalake, COMPARTILHADO: so cp/rm do arquivo; prd: CONFERIR
 ```
 
 ---
@@ -193,11 +193,11 @@ docker exec opalus-catalogo-db pg_dump -U catalogo -d catalogo -n catalogo \
   --no-owner --no-acl \
   | sed -e '/^SET transaction_timeout/d' -e '/^CREATE SCHEMA catalogo;$/d' > catalogo.sql
 
-gcloud storage buckets create gs://$BUCKET --project=$PROJECT --location=$REGION \
-  --uniform-bucket-level-access
+# O bucket ja existe (e do datalake): nao crie nem apague o bucket
 gcloud storage cp catalogo.sql gs://$BUCKET/
 
-# A SA do Cloud SQL le o arquivo do bucket
+# A SA do Cloud SQL le o arquivo do bucket. Em hml ja foi dado no setup do dash;
+# rodar de novo nao muda nada
 CSQL_SA=$(gcloud sql instances describe $INSTANCE --project=$PROJECT --format='value(serviceAccountEmailAddress)')
 gcloud storage buckets add-iam-policy-binding gs://$BUCKET \
   --member=serviceAccount:$CSQL_SA --role=roles/storage.objectViewer --format=none
@@ -248,13 +248,18 @@ Conferência: tem que aparecer só o usuário da SA.
 SELECT DISTINCT tableowner FROM pg_tables WHERE schemaname = 'catalogo';
 ```
 
+**Depois do 5.4, rode a parte "No database `atlas-connect`" do passo 2.3 do setup do
+dash** (`GRANT CONNECT`, `USAGE` e `SELECT` em `provedor_ia`, e o `search_path`).
+Enquanto o database não existe, o dash sobe, mas o check "AI Providers" do `/health`
+dele fica vermelho.
+
 Para atualizar o catálogo na nuvem depois de remapear localmente, repita o 5.3
 num database vazio. Também dá para apagar antes o schema com
 `DROP SCHEMA catalogo CASCADE`, mas **isso apaga os provedores de IA cadastrados na
 nuvem**. Depois, refaça o 5.4 e as permissões do dash (passo 2.3 do setup do dash).
 
 ```bash
-gcloud storage rm -r gs://$BUCKET   # quando nao precisar mais
+gcloud storage rm gs://$BUCKET/catalogo.sql   # SO o arquivo: o bucket e do datalake
 rm catalogo.sql
 ```
 
