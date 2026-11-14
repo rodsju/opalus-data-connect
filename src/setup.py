@@ -1,4 +1,5 @@
-"""Conteudo das rotas /setup: cadastro dos provedores de IA.
+"""
+Conteudo das rotas /setup: cadastro dos provedores de IA.
 
 As rotas em src/main.py so montam dados e chamam gerar_*(); a regra de negocio
 (slug, cifragem, validacao) vive em src/provedores.py.
