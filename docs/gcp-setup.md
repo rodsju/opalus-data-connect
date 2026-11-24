@@ -381,20 +381,21 @@ A tela `/setup/servidores` cadastra os servidores de `catalogo.servidor` e os sc
 cada um. É a origem que o `esquema_id` de cada objeto aponta. O formulário tem o painel
 "Conectar no GCP", com os comandos já preenchidos com o projeto e a SA de runtime.
 
-### 9.1 DDL (uma vez por ambiente)
+### 9.1 DDL: aplicado pelo app no boot
 
-As colunas de credencial vêm do bloco "Credencial do servidor" do
-`scripts/catalogo_schema.sql`. Local: `make schema`. Na nuvem, cole **só esse bloco** no
-Cloud SQL Studio como `postgres`, no database `atlas-connect`. Funciona porque o
-`postgres` é membro do papel da SA, que é a dona das tabelas (passo 5.4). Sem o DDL, a
-tela mostra `column "usuario" does not exist`.
+A cada boot, o app reaplica o `scripts/catalogo_schema.sql` (`catalogo.aplicar_ddl`, chamado
+no `lifespan` de `src/main.py`). O arquivo é idempotente e vai numa transação só, então
+uma falha não deixa o schema pela metade. Isso funciona porque a SA de runtime é dona do
+schema `catalogo` (passo 5.4). Um deploy que muda tabela ou view não exige mais colar
+SQL no Cloud SQL Studio.
 
-**O pré-filtro de schema também muda o DDL.** As quatro views (`vw_dicionario`,
-`vw_relacionamentos`, `vw_resumo` e `vw_orfas`) ganharam a coluna `esquema_id`, e os
-índices `relacionamento_esquema_origem_idx` e `relacionamento_esquema_destino_idx`
-foram criados. Cole também o bloco "Views" do `scripts/catalogo_schema.sql`. Sem ele,
-todas as telas do catálogo dão `column "esquema_id" does not exist`. O mais simples é
-colar o arquivo inteiro, que pode ser reaplicado.
+Para conferir no log da revisão, procure `DDL do catalogo aplicado no boot em N ms`. Se
+aparecer `DDL do catalogo NAO aplicado no boot`, o app sobe mesmo assim e as telas mostram
+o erro da consulta. Leia a causa no log, por exemplo um `lock_timeout` contra a revisão
+anterior, e faça um novo deploy ou cole o arquivo no Cloud SQL Studio como `postgres`.
+`DDL_NO_BOOT=1` desliga a migração no boot.
+
+Local: o mesmo boot aplica o DDL. `make schema` continua disponível.
 
 ### 9.2 Dois perfis por servidor: Local e GCP
 

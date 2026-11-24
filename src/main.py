@@ -1,4 +1,6 @@
 
+import asyncio
+import contextlib
 import os
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
@@ -29,7 +31,16 @@ from . import usuario as usuario_mod
 # Antes de qualquer rota: sem isto os logger.error dos modulos nao saem formatados
 log_mod.configurar()
 
-app = FastAPI()
+@contextlib.asynccontextmanager
+async def ciclo_de_vida(_app):
+    """Migra o catalogo antes de aceitar request. DDL_NO_BOOT=1 desliga (ex.: um
+    banco onde o app nao e o dono do schema)."""
+    if os.getenv("DDL_NO_BOOT", "").strip().lower() not in ("1", "true", "sim"):
+        await asyncio.to_thread(catalogo_mod.aplicar_ddl)
+    yield
+
+
+app = FastAPI(lifespan=ciclo_de_vida)
 
 # Ativos da aplicação (src/static)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

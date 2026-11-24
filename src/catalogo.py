@@ -85,6 +85,51 @@ def executar(sql, params=(), descricao="escrita"):
     logger.info("escrita '%s' concluida", descricao)
 
 
+# --------------------------------------------------------------------------
+# Migracao no boot
+#
+# Na nuvem ninguem aplicava o DDL: quem o aplica e o mapeador (--somente-ddl), que
+# so roda no local. Um deploy com coluna ou view nova subia contra o schema
+# antigo e toda tela dava `column "esquema_id" does not exist` (hml, 24/11/2026).
+# Agora o app reaplica o arquivo ao subir -- ele e idempotente, e a SA de runtime
+# e a dona do schema catalogo (docs/gcp-setup.md, passo 5.4).
+# --------------------------------------------------------------------------
+
+ARQUIVO_DDL = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "scripts", "catalogo_schema.sql",
+)
+# Sem isto um ALTER esperaria para sempre por um lock da revisao anterior, que
+# continua servindo enquanto esta sobe -- e o boot nunca terminaria.
+LOCK_TIMEOUT = "15s"
+
+
+def aplicar_ddl():
+    """Aplica scripts/catalogo_schema.sql numa transacao so. Devolve (ok, detalhe).
+
+    Tudo ou nada: o arquivo vai inteiro num execute, entao uma falha no meio nao
+    deixa o schema pela metade. O advisory lock serializa duas instancias subindo
+    juntas. Falhar aqui NAO derruba o boot -- o app sobe e as telas mostram o erro
+    da consulta, o que e melhor que um container que nem escuta a porta.
+    """
+    import time
+
+    inicio = time.perf_counter()
+    try:
+        with open(ARQUIVO_DDL, encoding="utf-8") as arquivo:
+            ddl = arquivo.read()
+        with conectar() as conexao:
+            conexao.execute(f"SET LOCAL lock_timeout = '{LOCK_TIMEOUT}'")
+            conexao.execute("SELECT pg_advisory_xact_lock(hashtext('catalogo_ddl'))")
+            conexao.execute(ddl)
+    except Exception as e:
+        logger.error("DDL do catalogo NAO aplicado no boot: %s", e, exc_info=True)
+        return False, str(e)
+    ms = (time.perf_counter() - inicio) * 1000
+    logger.info("DDL do catalogo aplicado no boot em %.0f ms", ms)
+    return True, f"{ms:.0f} ms"
+
+
 def um(sql, params=(), descricao="consulta"):
     """Primeira linha, ou None quando a consulta nao devolve nada."""
     linhas = consultar(sql, params, descricao)
