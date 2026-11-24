@@ -53,11 +53,14 @@ SEM_CLASSIFICACAO = (
     "EXISTS (SELECT 1 FROM catalogo.coluna c WHERE c.objeto_id = o.id"
     " AND c.descricao_ia IS NOT NULL AND c.descricao_ia <> '' AND c.sensivel IS NULL)"
 )
+# Por nome, entao dentro do schema do objeto
 COM_DEPENDENTES = (
-    "EXISTS (SELECT 1 FROM catalogo.relacionamento r WHERE r.destino_tabela = o.nome)"
+    "EXISTS (SELECT 1 FROM catalogo.relacionamento r"
+    " WHERE r.esquema_id = o.esquema_id AND r.destino_tabela = o.nome)"
 )
 COM_DEPENDENCIAS = (
-    "EXISTS (SELECT 1 FROM catalogo.relacionamento r WHERE r.origem_tabela = o.nome)"
+    "EXISTS (SELECT 1 FROM catalogo.relacionamento r"
+    " WHERE r.esquema_id = o.esquema_id AND r.origem_tabela = o.nome)"
 )
 
 # (chave, nome na querystring, rotulo, predicado)
@@ -84,22 +87,24 @@ class LoteInvalido(Exception):
 # --------------------------------------------------------------------------
 
 
-def _onde(ativos, termo):
-    condicoes = [pred for chave, _, _, pred in FILTROS if chave in ativos]
-    params = []
+def _onde(ativos, termo, esquema_id):
+    """WHERE do recorte. O schema em uso vai primeiro, e o parametro dele tambem."""
+    condicoes = ["o.esquema_id = %s"]
+    condicoes += [pred for chave, _, _, pred in FILTROS if chave in ativos]
+    params = [esquema_id]
     if termo:
         condicoes.append("o.nome ILIKE %s")
         params.append(f"%{termo}%")
     return (" WHERE " + " AND ".join(condicoes) if condicoes else ""), tuple(params)
 
 
-def candidatas(ativos=(), termo="", limite=200, tarefa="descricao"):
+def candidatas(esquema_id, ativos=(), termo="", limite=200, tarefa="descricao"):
     """Tabelas do recorte, com o total antes do limite de exibicao.
 
     A coluna de situacao muda com a tarefa: num lote de vetores o que importa e
     ter vetor, nao ter descricao.
     """
-    onde, params = _onde(ativos, termo)
+    onde, params = _onde(ativos, termo, esquema_id)
     origem = f"catalogo.objeto o{onde}"
 
     total = catalogo.um(
@@ -125,9 +130,9 @@ def candidatas(ativos=(), termo="", limite=200, tarefa="descricao"):
     return linhas, total
 
 
-def ids_do_recorte(ativos, termo):
+def ids_do_recorte(esquema_id, ativos, termo):
     """Todos os ids do filtro -- o "marcar todas as N" nao passa pela paginacao."""
-    onde, params = _onde(ativos, termo)
+    onde, params = _onde(ativos, termo, esquema_id)
     linhas = catalogo.consultar(
         f"SELECT o.id FROM catalogo.objeto o{onde} ORDER BY o.nome", params, "ids do lote"
     )

@@ -13,14 +13,17 @@ from . import catalogo as catalogo_mod
 from . import config as config_mod
 from . import debug as debug_view
 from . import embeddings as embeddings_mod
+from . import esquemas as esquemas_mod
 from . import grafo as grafo_mod
 from . import health as health_view
 from . import home as home_view
 from . import ia as ia_view
 from . import oracle as oracle_view
 from . import provedores as provedores_mod
+from . import servidores as servidores_mod
 from . import setup as setup_view
 from . import setup_lote as setup_lote_view
+from . import setup_servidores as setup_servidores_view
 from . import usuario as usuario_mod
 
 # Antes de qualquer rota: sem isto os logger.error dos modulos nao saem formatados
@@ -37,6 +40,34 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # Design system Opalus servido a partir da raiz do projeto
 DS_DIR = os.path.join(BASE_DIR, "..", "ds_opalus")
 app.mount("/ds-static", StaticFiles(directory=DS_DIR), name="ds-static")
+
+# Caminhos que nao leem o catalogo: nao pagam a consulta dos schemas. /health
+# sobretudo -- a sonda de liveness nao pode depender do Postgres.
+SEM_ESQUEMA = ("/static/", "/ds-static/", "/health", "/logout", "/api/")
+
+
+@app.middleware("http")
+async def esquema_do_request(request: Request, chamar):
+    """Fixa o schema em uso (pre-filtro de todas as telas) uma vez por request.
+
+    O ContextVar setado aqui chega as rotas sync: o Starlette copia o contexto
+    para a thread que as executa. Ver src/esquemas.py.
+    """
+    if not request.url.path.startswith(SEM_ESQUEMA):
+        esquemas_mod.resolver(request.cookies.get(esquemas_mod.COOKIE))
+    return await chamar(request)
+
+
+@app.get("/esquema")
+def trocar_esquema(id: int = Query(...), voltar: str = Query(default="/oracle")):
+    """Troca o schema em uso e volta para a pagina em que o usuario estava."""
+    resposta = RedirectResponse(url=esquemas_mod.destino_seguro(voltar), status_code=303)
+    if any(e["id"] == id for e in esquemas_mod.lista_atual()):
+        resposta.set_cookie(
+            esquemas_mod.COOKIE, str(id), max_age=esquemas_mod.COOKIE_MAX_AGE,
+            path="/", samesite="lax", httponly=True,
+        )
+    return resposta
 
 
 def quer_html(request):
@@ -96,7 +127,7 @@ def oracle_grafo(request: Request):
 def oracle_grafo_json():
     """Nos e arestas do recorte inteiro; o cliente expande a partir daqui."""
     try:
-        return JSONResponse(grafo_mod.grafo_completo())
+        return JSONResponse(grafo_mod.grafo_completo(esquemas_mod.atual_id()))
     except catalogo_mod.ConsultaFalhou as falha:
         return JSONResponse({"erro": str(falha.causa)}, status_code=502)
 
@@ -201,7 +232,12 @@ def oracle_objeto(request: Request, nome: str):
     """Detalhe de um objeto: vizinhanca de FKs, descricao por IA e estrutura."""
     html, status = oracle_view.gerar_detalhe(nome, usuario_mod.identificar(request))
     if html is None:
-        raise HTTPException(status_code=404, detail=f"objeto desconhecido: {nome}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"objeto {nome} não existe no schema em uso "
+            f"({esquemas_mod.rotulo(esquemas_mod.atual())}). Existe em outro schema? "
+            "Troque no cabeçalho.",
+        )
     return HTMLResponse(content=html, status_code=status)
 
 
@@ -212,7 +248,7 @@ def oracle_descrever(request: Request, nome: str, provedor: str = Form(default="
     O 303 evita que um F5 depois da geracao dispare outra chamada paga.
     """
     usuario = usuario_mod.identificar(request)
-    objeto = oracle_view.buscar_objeto(nome)
+    objeto = oracle_view.buscar_objeto(nome, esquemas_mod.atual_id())
     if not objeto:
         raise HTTPException(status_code=404, detail=f"objeto desconhecido: {nome}")
 
@@ -242,7 +278,7 @@ def oracle_vetorizar(request: Request, nome: str, provedor: str = Form(default="
     e chamada paga.
     """
     usuario = usuario_mod.identificar(request)
-    objeto = oracle_view.buscar_objeto(nome)
+    objeto = oracle_view.buscar_objeto(nome, esquemas_mod.atual_id())
     if not objeto:
         raise HTTPException(status_code=404, detail=f"objeto desconhecido: {nome}")
 
@@ -344,6 +380,140 @@ def setup_provedor_excluir(request: Request, slug: str):
     return RedirectResponse(url="/setup/provedores", status_code=303)
 
 
+# --------------------------------------------------------------------------
+# Setup > Servidores
+# --------------------------------------------------------------------------
+
+SERVIDORES = "/setup/servidores"
+
+
+def _form_servidor(dados):
+    """Campos crus do formulario. A senha nunca e logada nem devolvida a tela."""
+    return dict(
+        tipo=(dados.get("tipo") or "").strip(),
+        host=(dados.get("host") or "").strip(),
+        porta=(dados.get("porta") or "").strip(),
+        base=(dados.get("base") or "").strip(),
+        nome=(dados.get("nome") or "").strip(),
+        ativo=bool(dados.get("ativo")),
+        usuario=(dados.get("usuario") or "").strip(),
+        senha_fonte=(dados.get("senha_fonte") or "").strip(),
+        senha_ref=(dados.get("senha_ref") or "").strip(),
+        usuario_gcp=(dados.get("usuario_gcp") or "").strip(),
+        senha_fonte_gcp=(dados.get("senha_fonte_gcp") or "").strip(),
+        senha_ref_gcp=(dados.get("senha_ref_gcp") or "").strip(),
+        senha=dados.get("senha") or "",
+    )
+
+
+def _html(par):
+    html, status = par
+    if html is None:
+        raise HTTPException(status_code=404, detail="servidor desconhecido")
+    return HTMLResponse(content=html, status_code=status)
+
+
+@app.get("/setup/servidores")
+def setup_servidores(request: Request):
+    return _html(setup_servidores_view.gerar_lista(usuario_mod.identificar(request)))
+
+
+@app.get("/setup/servidores/novo")
+def setup_servidor_novo(request: Request):
+    return _html(setup_servidores_view.gerar_form(None, usuario_mod.identificar(request)))
+
+
+@app.post("/setup/servidores")
+async def setup_servidor_criar(request: Request):
+    usuario = usuario_mod.identificar(request)
+    campos = _form_servidor(await request.form())
+    try:
+        servidor_id = servidores_mod.criar(**campos)
+    except (provedores_mod.ConfiguracaoInvalida, catalogo_mod.ConsultaFalhou) as falha:
+        campos.pop("senha")
+        html, _ = setup_servidores_view.gerar_form(
+            None, usuario, aviso=_aviso_de(falha), valores=campos
+        )
+        return HTMLResponse(content=html, status_code=400)
+    return RedirectResponse(url=f"{SERVIDORES}/{servidor_id}", status_code=303)
+
+
+@app.get("/setup/servidores/{servidor_id}")
+def setup_servidor_editar(request: Request, servidor_id: int):
+    return _html(
+        setup_servidores_view.gerar_form(servidor_id, usuario_mod.identificar(request))
+    )
+
+
+@app.post("/setup/servidores/{servidor_id}")
+async def setup_servidor_atualizar(request: Request, servidor_id: int):
+    usuario = usuario_mod.identificar(request)
+    campos = _form_servidor(await request.form())
+    try:
+        servidores_mod.atualizar(servidor_id, **campos)
+    except (provedores_mod.ConfiguracaoInvalida, catalogo_mod.ConsultaFalhou) as falha:
+        campos.pop("senha")
+        html, _ = setup_servidores_view.gerar_form(
+            servidor_id, usuario, aviso=_aviso_de(falha), valores=campos
+        )
+        return HTMLResponse(content=html or "", status_code=400 if html else 404)
+    return RedirectResponse(url=f"{SERVIDORES}/{servidor_id}", status_code=303)
+
+
+@app.post("/setup/servidores/{servidor_id}/testar")
+async def setup_servidor_testar(request: Request, servidor_id: int):
+    """Testa o perfil pedido pelo botao; sem ele, o do ambiente em que o app roda."""
+    usuario = usuario_mod.identificar(request)
+    perfil = (await request.form()).get("perfil")
+    if perfil not in servidores_mod.PERFIS:
+        perfil = None
+    try:
+        ok, detalhe, ms = servidores_mod.testar(servidor_id, perfil)
+    except (provedores_mod.ConfiguracaoInvalida, catalogo_mod.ConsultaFalhou) as falha:
+        return _html(
+            setup_servidores_view.gerar_form(servidor_id, usuario, aviso=_aviso_de(falha))
+        )
+    return _html(
+        setup_servidores_view.gerar_form(
+            servidor_id, usuario, teste={"ok": ok, "detalhe": detalhe, "ms": ms}
+        )
+    )
+
+
+@app.post("/setup/servidores/{servidor_id}/excluir")
+def setup_servidor_excluir(request: Request, servidor_id: int):
+    usuario = usuario_mod.identificar(request)
+    try:
+        servidores_mod.excluir(servidor_id)
+    except (provedores_mod.ConfiguracaoInvalida, catalogo_mod.ConsultaFalhou) as falha:
+        html, _ = setup_servidores_view.gerar_form(servidor_id, usuario, aviso=_aviso_de(falha))
+        return HTMLResponse(content=html or "", status_code=409 if html else 404)
+    return RedirectResponse(url=SERVIDORES, status_code=303)
+
+
+@app.post("/setup/servidores/{servidor_id}/esquemas")
+async def setup_esquema_criar(request: Request, servidor_id: int):
+    usuario = usuario_mod.identificar(request)
+    dados = await request.form()
+    try:
+        servidores_mod.criar_esquema(servidor_id, dados.get("nome"))
+    except (provedores_mod.ConfiguracaoInvalida, catalogo_mod.ConsultaFalhou) as falha:
+        html, _ = setup_servidores_view.gerar_form(servidor_id, usuario, aviso=_aviso_de(falha))
+        return HTMLResponse(content=html or "", status_code=400 if html else 404)
+    return RedirectResponse(url=f"{SERVIDORES}/{servidor_id}", status_code=303)
+
+
+@app.post("/setup/servidores/{servidor_id}/esquemas/{esquema_id}/excluir")
+def setup_esquema_excluir(request: Request, servidor_id: int, esquema_id: int):
+    usuario = usuario_mod.identificar(request)
+    try:
+        servidores_mod.excluir_esquema(servidor_id, esquema_id)
+    except (provedores_mod.ConfiguracaoInvalida, catalogo_mod.ConsultaFalhou) as falha:
+        html, _ = setup_servidores_view.gerar_form(servidor_id, usuario, aviso=_aviso_de(falha))
+        return HTMLResponse(content=html or "", status_code=409 if html else 404)
+    return RedirectResponse(url=f"{SERVIDORES}/{servidor_id}", status_code=303)
+
+
 def _aviso_de(falha):
     return {
         "motivo": getattr(falha, "motivo", "Não conseguimos gravar"),
@@ -401,7 +571,7 @@ async def setup_lote_criar(request: Request):
     paralelismo = max(1, min(16, int(dados.get("paralelismo") or 4)))
 
     if dados.get("todas"):
-        objetos = lote_mod.ids_do_recorte(ativos, termo)
+        objetos = lote_mod.ids_do_recorte(esquemas_mod.atual_id(), ativos, termo)
     else:
         objetos = [int(v) for v in dados.getlist("objetos")]
 
@@ -413,7 +583,13 @@ async def setup_lote_criar(request: Request):
             modelo,
             paralelismo,
             objetos,
-            {"filtros": sorted(ativos), "termo": termo, "todas": bool(dados.get("todas"))},
+            {
+                "filtros": sorted(ativos),
+                "termo": termo,
+                "todas": bool(dados.get("todas")),
+                # Registro de qual schema era o pre-filtro quando o lote foi criado
+                "esquema_id": esquemas_mod.atual_id(),
+            },
             usuario["email"] if usuario else None,
             tarefa=tarefa,
         )

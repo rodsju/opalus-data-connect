@@ -132,7 +132,7 @@ SQL_FKS = """
 SELECT array_to_string(origem_colunas, ',') AS colunas,
        destino_tabela,
        array_to_string(destino_colunas, ',') AS destino_colunas
-  FROM catalogo.relacionamento WHERE origem_tabela = %s
+  FROM catalogo.relacionamento WHERE origem_tabela = %s AND esquema_id = %s
  ORDER BY constraint_nome
 """
 
@@ -140,7 +140,7 @@ SQL_FKS_ENTRANDO = """
 SELECT origem_tabela,
        array_to_string(origem_colunas, ',')  AS colunas,
        array_to_string(destino_colunas, ',') AS destino_colunas
-  FROM catalogo.relacionamento WHERE destino_tabela = %s
+  FROM catalogo.relacionamento WHERE destino_tabela = %s AND esquema_id = %s
  ORDER BY origem_tabela
 """
 
@@ -174,9 +174,11 @@ def amostra_orcada(linhas, teto):
 def montar_payload(objeto):
     """Texto do prompt, quantas linhas de amostra couberam e quantas colunas."""
     colunas = catalogo.consultar(SQL_COLUNAS, (objeto["id"],), "colunas para o prompt")
-    fks = catalogo.consultar(SQL_FKS, (objeto["nome"],), "FKs saindo para o prompt")
+    fks = catalogo.consultar(
+        SQL_FKS, (objeto["nome"], objeto["esquema_id"]), "FKs saindo para o prompt"
+    )
     entrando = catalogo.consultar(
-        SQL_FKS_ENTRANDO, (objeto["nome"],), "FKs entrando para o prompt"
+        SQL_FKS_ENTRANDO, (objeto["nome"], objeto["esquema_id"]), "FKs entrando para o prompt"
     )
     amostra = catalogo.consultar(SQL_AMOSTRA, (objeto["id"],), "amostra para o prompt")
 
@@ -465,13 +467,13 @@ def aterrar(descricao, objeto):
         "dependencias": {
             linha["destino_tabela"]
             for linha in catalogo.consultar(
-                SQL_FKS, (objeto["nome"],), "FKs para conferência"
+                SQL_FKS, (objeto["nome"], objeto["esquema_id"]), "FKs para conferência"
             )
         },
         "dependentes": {
             linha["origem_tabela"]
             for linha in catalogo.consultar(
-                SQL_FKS_ENTRANDO, (objeto["nome"],), "FKs para conferência"
+                SQL_FKS_ENTRANDO, (objeto["nome"], objeto["esquema_id"]), "FKs para conferência"
             )
         },
     }

@@ -61,7 +61,8 @@ PASSOS = 20
 # os prefixos que o usuario mandou fora. Com a lista vazia o LIKE ANY devolve
 # false e o NOT deixa tudo passar -- nao precisa de caso especial.
 RECORTE = """
-       o.embedding_modelo = %(modelo)s
+       o.esquema_id = %(esquema)s
+   AND o.embedding_modelo = %(modelo)s
    AND NOT (upper(o.nome) LIKE ANY (%(excluir)s::text[]))
    AND (%(nomes)s::text[] IS NULL OR o.nome = ANY(%(nomes)s::text[]))
 """
@@ -73,9 +74,9 @@ SQL_NOS = f"""
 SELECT o.nome,
        coalesce(d.rotulo, o.nome) AS rotulo,
        (SELECT count(*) FROM catalogo.relacionamento r
-         WHERE r.destino_tabela = o.nome) AS dependentes,
+         WHERE r.esquema_id = o.esquema_id AND r.destino_tabela = o.nome) AS dependentes,
        (SELECT count(*) FROM catalogo.relacionamento r
-         WHERE r.origem_tabela = o.nome)  AS dependencias
+         WHERE r.esquema_id = o.esquema_id AND r.origem_tabela = o.nome)  AS dependencias
   FROM catalogo.objeto o
   LEFT JOIN catalogo.descricao_ia d ON d.objeto_id = o.id
  WHERE {RECORTE}
@@ -110,7 +111,8 @@ WITH v AS (
 )
 SELECT DISTINCT r.origem_tabela AS origem, r.destino_tabela AS destino
   FROM catalogo.relacionamento r
- WHERE r.origem_tabela  IN (SELECT nome FROM v)
+ WHERE r.esquema_id = %(esquema)s
+   AND r.origem_tabela  IN (SELECT nome FROM v)
    AND r.destino_tabela IN (SELECT nome FROM v)
    AND r.origem_tabela <> r.destino_tabela
 """
@@ -263,7 +265,7 @@ def nomear_temas(nos, tema):
 # --------------------------------------------------------------------------
 
 
-def mapa(modelo, excluir="", nomes=None):
+def mapa(modelo, esquema_id, excluir="", nomes=None):
     """Nos, arestas e duplicatas do recorte. Nao chama API nenhuma.
 
     `nomes` restringe o mapa a um conjunto de tabelas -- e por onde entra o
@@ -281,6 +283,7 @@ def mapa(modelo, excluir="", nomes=None):
         "excluir": busca.prefixos(excluir),
         "nomes": list(nomes) if nomes is not None else None,
         "modelo": modelo,
+        "esquema": esquema_id,
         "k": K,
         "piso": PISO,
     }

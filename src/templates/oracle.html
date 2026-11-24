@@ -10,6 +10,48 @@
   {% endcall %}
 {% else %}
 
+{% call painel('Schemas', resumo | length ~ ' no catálogo') %}
+  <div class="ds-table-wrap">
+    <table class="ds-table ds-esquemas">
+      <thead>
+        <tr>
+          <th>Servidor</th><th>Schema</th><th class="num">Objetos</th>
+          <th class="num">Tabelas</th><th class="num">Views</th>
+          <th class="num">Com registros</th><th class="num">Colunas</th>
+          <th class="num">Relacionamentos</th><th class="num">Descritos</th>
+          <th class="num">Vetorizados</th><th>Atualizado</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in resumo %}
+        <tr{% if e.atual %} class="ds-esquemas__atual"{% endif %}>
+          <td>{{ e.servidor }}</td>
+          <td class="mono">{{ e.nome }}</td>
+          <td class="num">{{ e.objetos | fmt }}</td>
+          <td class="num">{{ e.tabelas | fmt }}</td>
+          <td class="num">{{ e.views | fmt }}</td>
+          <td class="num">{{ e.com_registros | fmt }}</td>
+          <td class="num">{{ e.colunas | fmt }}</td>
+          <td class="num">{{ e.relacionamentos | fmt }}</td>
+          <td class="num">{{ e.pct_descritos }}</td>
+          <td class="num">{{ e.pct_vetorizados }}</td>
+          <td>{{ e.atualizado_em | fmt if e.atualizado_em else '—' }}</td>
+          <td>
+            {% if e.atual %}
+            <span class="ds-badge ds-badge--brand">em uso</span>
+            {% else %}
+            <a href="/esquema?id={{ e.id }}&amp;voltar=/oracle">Usar este</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="ds-nota">Os números abaixo, e todas as telas do catálogo, são do schema
+     <strong>{{ esquema_rotulo }}</strong>. Troque no cabeçalho ou em "Usar este".</p>
+{% endcall %}
+
 {{ kpis(cards) }}
 
 {% if erros %}

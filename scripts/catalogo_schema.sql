@@ -449,6 +449,65 @@ CREATE INDEX IF NOT EXISTS relacionamento_esquema_idx ON catalogo.relacionamento
 
 
 -- ---------------------------------------------------------------------------
+-- Credencial do servidor (Setup > Servidores)
+--
+-- A senha tem tres fontes, escolhidas no cadastro (src/servidores.py):
+--   cifrada  digitada na tela, gravada com pgp_sym_encrypt e a IA_SENHA_MESTRA
+--            -- o mesmo padrao de provedor_ia; a tela so mostra senha_final
+--   secret   NOME de um secret do Secret Manager, lido em runtime pela SA do
+--            Cloud Run. Servidor novo no GCP sem redeploy: basta o secret e o
+--            secretAccessor (docs/gcp-setup.md, secao 9)
+--   env      NOME de uma variavel de ambiente (.env local ou --set-secrets).
+--            E o default porque e o que o servidor ja gravado usa hoje: o
+--            mapeador e o /health continuam lendo ORACLE_PASSWORD
+--
+-- senha_ref guarda o nome do secret ou da variavel, nunca o valor.
+--
+-- DOIS PERFIS por servidor, porque o mesmo Oracle e acessado com credenciais
+-- diferentes em cada lugar: no local, o usuario pessoal e a senha do .env; no
+-- Cloud Run, DS_IW e o secret do Datastream. usuario/senha_* sao o perfil
+-- LOCAL; *_gcp o do Cloud Run (so secret ou env: la a senha mora no Secret
+-- Manager). O app escolhe pelo ambiente (K_SERVICE), src/servidores.py.
+-- Usuario vazio = perfil nao configurado.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE catalogo.servidor
+  ADD COLUMN IF NOT EXISTS usuario       text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS senha_fonte   text NOT NULL DEFAULT 'env',
+  ADD COLUMN IF NOT EXISTS senha_cifrada bytea,
+  ADD COLUMN IF NOT EXISTS senha_final   text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS senha_ref     text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS atualizado_em timestamptz NOT NULL DEFAULT now();
+
+ALTER TABLE catalogo.servidor DROP CONSTRAINT IF EXISTS servidor_senha_fonte_check;
+ALTER TABLE catalogo.servidor
+  ADD CONSTRAINT servidor_senha_fonte_check
+      CHECK (senha_fonte IN ('cifrada', 'secret', 'env'));
+
+ALTER TABLE catalogo.servidor
+  ADD COLUMN IF NOT EXISTS usuario_gcp     text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS senha_fonte_gcp text NOT NULL DEFAULT 'secret',
+  ADD COLUMN IF NOT EXISTS senha_ref_gcp   text NOT NULL DEFAULT '';
+
+ALTER TABLE catalogo.servidor DROP CONSTRAINT IF EXISTS servidor_senha_fonte_gcp_check;
+ALTER TABLE catalogo.servidor
+  ADD CONSTRAINT servidor_senha_fonte_gcp_check
+      CHECK (senha_fonte_gcp IN ('secret', 'env'));
+
+-- O servidor que veio do .env: a senha local continua sendo a de ORACLE_PASSWORD.
+-- O usuario nao da para adivinhar daqui -- preenche-se na tela.
+UPDATE catalogo.servidor SET senha_ref = 'ORACLE_PASSWORD'
+ WHERE senha_fonte = 'env' AND senha_ref = '' AND tipo = 'oracle';
+
+-- O Oracle do IW no Cloud Run: o mesmo DS_IW e o mesmo secret que o
+-- deploy-hml.yaml ja usa (docs/gcp-setup.md, secao 8). So preenche perfil vazio.
+UPDATE catalogo.servidor
+   SET usuario_gcp = 'DS_IW', senha_fonte_gcp = 'secret',
+       senha_ref_gcp = 'atlas-iw-oracle-ds-iw-password'
+ WHERE tipo = 'oracle' AND host = '192.168.30.4' AND base = 'IWTST' AND usuario_gcp = '';
+
+
+-- ---------------------------------------------------------------------------
 -- Embeddings: por que vector sem dimensao, e o que isso custa
 --
 -- O modelo de embedding e escolhido na tela, e cada um tem a sua dimensao
@@ -494,7 +553,9 @@ SELECT o.nome          AS objeto,
        -- change name of view column", e o schema deixaria de reaplicar.
        c.sensivel,
        c.sensivel_categoria,
-       c.sempre_nulo
+       c.sempre_nulo,
+       -- Pre-filtro de schema (Setup > cabecalho): toda tela filtra por ele
+       o.esquema_id
   FROM catalogo.objeto o
   JOIN catalogo.coluna c ON c.objeto_id = o.id
   -- A descricao gerada por IA e por coluna, guardada como jsonb em descricao_ia.
@@ -518,7 +579,8 @@ SELECT r.origem_tabela || '.' || array_to_string(r.origem_colunas, ',')   AS ori
        r.destino_tabela,
        r.destino_colunas,
        r.constraint_nome,
-       r.delete_rule
+       r.delete_rule,
+       r.esquema_id
   FROM catalogo.relacionamento r;
 
 -- Uma linha por objeto: o panorama para decidir por onde comecar a olhar.
@@ -531,13 +593,16 @@ SELECT o.nome,
        (SELECT count(*) FROM catalogo.coluna c WHERE c.objeto_id = o.id)         AS n_colunas,
        EXISTS (SELECT 1 FROM catalogo.restricao r
                 WHERE r.objeto_id = o.id AND r.tipo = 'P')                       AS tem_pk,
+       -- Relacionamento liga tabelas pelo NOME: sem casar o esquema, uma tabela
+       -- de mesmo nome em outro schema somaria as FKs da outra
        (SELECT count(*) FROM catalogo.relacionamento r
-         WHERE r.origem_tabela = o.nome)                                         AS fks_saindo,
+         WHERE r.esquema_id = o.esquema_id AND r.origem_tabela = o.nome)         AS fks_saindo,
        (SELECT count(*) FROM catalogo.relacionamento r
-         WHERE r.destino_tabela = o.nome)                                        AS fks_entrando,
+         WHERE r.esquema_id = o.esquema_id AND r.destino_tabela = o.nome)        AS fks_entrando,
        (SELECT count(*) FROM catalogo.amostra a WHERE a.objeto_id = o.id)        AS linhas_amostra,
        jsonb_array_length(o.erros)                                               AS n_erros,
-       coalesce(d.rotulo, '')                                                    AS rotulo
+       coalesce(d.rotulo, '')                                                    AS rotulo,
+       o.esquema_id
   FROM catalogo.objeto o
   -- Legenda de ate 5 palavras gerada por IA; LEFT porque a maioria ainda nao tem
   LEFT JOIN catalogo.descricao_ia d ON d.objeto_id = o.id;
@@ -548,8 +613,17 @@ CREATE OR REPLACE VIEW catalogo.vw_orfas AS
 SELECT o.nome,
        o.tipo,
        o.num_registros,
-       (SELECT count(*) FROM catalogo.coluna c WHERE c.objeto_id = o.id) AS n_colunas
+       (SELECT count(*) FROM catalogo.coluna c WHERE c.objeto_id = o.id) AS n_colunas,
+       o.esquema_id
   FROM catalogo.objeto o
  WHERE o.tipo = 'TABLE'
-   AND NOT EXISTS (SELECT 1 FROM catalogo.relacionamento r WHERE r.origem_tabela = o.nome)
-   AND NOT EXISTS (SELECT 1 FROM catalogo.relacionamento r WHERE r.destino_tabela = o.nome);
+   AND NOT EXISTS (SELECT 1 FROM catalogo.relacionamento r
+                    WHERE r.esquema_id = o.esquema_id AND r.origem_tabela = o.nome)
+   AND NOT EXISTS (SELECT 1 FROM catalogo.relacionamento r
+                    WHERE r.esquema_id = o.esquema_id AND r.destino_tabela = o.nome);
+
+-- As telas ligam objeto e relacionamento por (esquema, nome)
+CREATE INDEX IF NOT EXISTS relacionamento_esquema_origem_idx
+    ON catalogo.relacionamento (esquema_id, origem_tabela);
+CREATE INDEX IF NOT EXISTS relacionamento_esquema_destino_idx
+    ON catalogo.relacionamento (esquema_id, destino_tabela);

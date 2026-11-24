@@ -7,6 +7,23 @@
   <img class="app-header__logo" src="/ds-static/assets/logo-horizontal.png" alt="Opalus">
 
   <div class="app-header__actions">
+    {% if esquemas %}
+    {# Pre-filtro de todas as telas. Troca no change; sem JS, o botao envia. #}
+    <form class="app-header__esquema" method="get" action="/esquema">
+      <i data-lucide="database" style="width:16px;height:16px;"></i>
+      <label class="sr-only" for="sel-esquema">Schema em uso</label>
+      <select id="sel-esquema" name="id" onchange="this.form.submit()" title="Schema em uso">
+        {% for e in esquemas %}
+        <option value="{{ e.id }}"{% if esquema_atual and e.id == esquema_atual.id %} selected{% endif %}>
+          {{ e.servidor }} · {{ e.nome }}
+        </option>
+        {% endfor %}
+      </select>
+      <input type="hidden" name="voltar" value="{{ caminho }}">
+      <noscript><button type="submit">Usar</button></noscript>
+    </form>
+    {% endif %}
+
     <span class="app-header__badge">{{ ambiente }}</span>
 
     <button class="app-header__icon" type="button" aria-label="Notificações">

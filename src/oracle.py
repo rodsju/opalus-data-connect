@@ -8,17 +8,28 @@ fica em src/templates/oracle.html e oracle_lista.html.
 import json
 from urllib.parse import quote_plus
 
-from . import busca, catalogo, embeddings, grafo, ia, layout, mapa, provedores
+from . import busca, catalogo, embeddings, esquemas, grafo, ia, layout, mapa, provedores
 
 VOLTAR = "/oracle"
 
 # "Tem registros" vem da amostra, nao da estatistica do Oracle: em 3 tabelas de log
 # o ALL_TABLES.num_rows era de marco/2026 e ja nao valia -- a amostra veio vazia.
 # Por isso o recorte olha tem_registros, que a extracao sempre preenche.
-COM_REGISTROS = "SELECT nome FROM catalogo.objeto WHERE tem_registros"
+#
+# Os tres casam por NOME, entao precisam ficar dentro do schema da linha: `{esq}`
+# e trocado pela coluna de esquema da secao (SECOES[...]["esquema"]) em
+# gerar_lista. Qualificada pela origem -- sem isso o esquema_id do subselect
+# resolveria para a propria tabela de dentro e o filtro viraria tautologia.
+COM_REGISTROS = (
+    "SELECT ox.nome FROM catalogo.objeto ox WHERE ox.tem_registros AND ox.esquema_id = {esq}"
+)
 # "Dependente" e quem aponta para ca: a chave desta tabela e usada como FK por outra.
-COM_DEPENDENTES = "SELECT DISTINCT destino_tabela FROM catalogo.relacionamento"
-COM_DEPENDENCIAS = "SELECT DISTINCT origem_tabela FROM catalogo.relacionamento"
+COM_DEPENDENTES = (
+    "SELECT rx.destino_tabela FROM catalogo.relacionamento rx WHERE rx.esquema_id = {esq}"
+)
+COM_DEPENDENCIAS = (
+    "SELECT rx.origem_tabela FROM catalogo.relacionamento rx WHERE rx.esquema_id = {esq}"
+)
 
 # Os tres tipos de controle da barra. `flag` e o checkbox de sempre; os outros
 # dois existem porque campo de tres estados e filtro por valor nao cabem num
@@ -94,6 +105,7 @@ SECOES = {
         "titulo": "Objetos",
         "descricao": "Tabelas e views do schema, com o panorama de cada uma.",
         "origem": "catalogo.vw_resumo",
+        "esquema": "vw_resumo.esquema_id",
         "colunas": (
             "nome, rotulo, tipo, num_registros, tem_registros, n_colunas, tem_pk, "
             "fks_saindo, fks_entrando, linhas_amostra"
@@ -123,6 +135,7 @@ SECOES = {
         "titulo": "Dicionário",
         "descricao": "Todas as colunas do schema, com tipo, nulidade e comentário.",
         "origem": "catalogo.vw_dicionario",
+        "esquema": "vw_dicionario.esquema_id",
         "colunas": (
             "objeto, posicao, coluna, tipo_completo, aceita_nulo, eh_pk, "
             "valor_default, comentario, descricao_ia, sensivel_categoria, sempre_nulo"
@@ -158,6 +171,7 @@ SECOES = {
         "titulo": "Relacionamentos",
         "descricao": "As chaves estrangeiras declaradas, aresta a aresta.",
         "origem": "catalogo.vw_relacionamentos",
+        "esquema": "vw_relacionamentos.esquema_id",
         "colunas": "origem, destino, constraint_nome, delete_rule",
         "campos": [
             ("origem", "Origem", False),
@@ -180,6 +194,7 @@ SECOES = {
             "relacionamento não declarado."
         ),
         "origem": "catalogo.vw_orfas",
+        "esquema": "vw_orfas.esquema_id",
         "colunas": "nome, tipo, num_registros, n_colunas",
         "campos": [
             ("nome", "Objeto", False),
@@ -199,6 +214,7 @@ SECOES = {
             "pega os registros mais recentes quando a tabela deixa ordenar barato."
         ),
         "origem": "catalogo.amostra a JOIN catalogo.objeto o ON o.id = a.objeto_id",
+        "esquema": "o.esquema_id",
         "colunas": "o.nome AS objeto, a.linha, a.mascarada, a.dados",
         "campos": [
             ("objeto", "Objeto", False),
@@ -215,6 +231,7 @@ SECOES = {
         "titulo": "Índices",
         "descricao": "Índices por objeto, com as colunas que cobrem.",
         "origem": "catalogo.indice i JOIN catalogo.objeto o ON o.id = i.objeto_id",
+        "esquema": "o.esquema_id",
         "colunas": "o.nome AS objeto, i.nome, i.unico, i.tipo, i.colunas",
         "campos": [
             ("objeto", "Objeto", False),
@@ -235,6 +252,7 @@ SECOES = {
             "não traz check constraints."
         ),
         "origem": "catalogo.restricao r JOIN catalogo.objeto o ON o.id = r.objeto_id",
+        "esquema": "o.esquema_id",
         "colunas": (
             "o.nome AS objeto, r.nome, r.tipo, r.colunas, "
             "r.ref_tabela, r.ref_colunas, r.delete_rule"
@@ -307,6 +325,26 @@ def pagina_erro(falha, usuario, caminho):
 # --------------------------------------------------------------------------
 
 
+def filtros_da_secao(config):
+    """Os predicados da secao com o `{esq}` trocado pela coluna de esquema dela."""
+    return {
+        chave: predicado.replace("{esq}", config["esquema"])
+        for chave, predicado in config["filtros"].items()
+    }
+
+
+def condicao_da_lista(config, esquema_id, recorte, params_recorte):
+    """O pre-filtro de schema na frente do recorte escolhido na barra.
+
+    O schema vai PRIMEIRO, e o parametro dele tambem: catalogo.listar poe a
+    condicao antes da busca, e a ordem dos %s tem de seguir a do texto.
+    """
+    condicao = f"{config['esquema']} = %s"
+    if recorte:
+        condicao += f" AND {recorte}"
+    return condicao, (esquema_id,) + tuple(params_recorte)
+
+
 def gerar_lista(secao, pagina, por_pagina, termo, valores=None, usuario=None):
     """Devolve (html, status_code) para uma das secoes de SECOES.
 
@@ -318,9 +356,11 @@ def gerar_lista(secao, pagina, por_pagina, termo, valores=None, usuario=None):
     caminho = f"/oracle/{secao}"
     termo = (termo or "").strip()
 
-    disponiveis = config["filtros"]
+    disponiveis = filtros_da_secao(config)
     valores = {c: v for c, v in (valores or {}).items() if c in disponiveis and v}
-    recorte, params_recorte = montar_recorte(disponiveis, valores)
+    recorte, params_recorte = condicao_da_lista(
+        config, esquemas.atual_id(), *montar_recorte(disponiveis, valores)
+    )
 
     try:
         linhas, pag = catalogo.listar(
@@ -382,40 +422,46 @@ def gerar_lista(secao, pagina, por_pagina, termo, valores=None, usuario=None):
 # Visao geral
 # --------------------------------------------------------------------------
 
+# Tudo do schema em uso (%(e)s). Os objetos do schema vao numa CTE e o resto
+# se pendura nela pelo id -- coluna, restricao, indice e amostra nao tem
+# esquema_id proprio, so o objeto.
 SQL_CONTAGENS = """
-SELECT (SELECT count(*) FROM catalogo.objeto)                        AS objetos,
-       (SELECT count(*) FROM catalogo.objeto WHERE tipo = 'TABLE')   AS tabelas,
-       (SELECT count(*) FROM catalogo.objeto WHERE tipo = 'VIEW')    AS views,
-       (SELECT count(*) FROM catalogo.objeto WHERE tem_registros)    AS com_registros,
-       (SELECT count(*) FROM catalogo.objeto
+WITH o AS (SELECT * FROM catalogo.objeto WHERE esquema_id = %(e)s)
+SELECT (SELECT count(*) FROM o)                                      AS objetos,
+       (SELECT count(*) FROM o WHERE tipo = 'TABLE')                 AS tabelas,
+       (SELECT count(*) FROM o WHERE tipo = 'VIEW')                  AS views,
+       (SELECT count(*) FROM o WHERE tem_registros)                  AS com_registros,
+       (SELECT count(*) FROM o
          WHERE NOT tem_registros AND num_registros = 0)              AS vazias_zeradas,
-       (SELECT count(*) FROM catalogo.objeto
+       (SELECT count(*) FROM o
          WHERE NOT tem_registros AND num_registros IS NULL)          AS vazias_sem_stat,
-       (SELECT count(*) FROM catalogo.objeto
+       (SELECT count(*) FROM o
          WHERE NOT tem_registros AND num_registros > 0)              AS vazias_stat_velha,
-       (SELECT count(*) FROM catalogo.coluna)                        AS colunas,
-       (SELECT count(*) FROM catalogo.coluna c
-          JOIN catalogo.objeto o ON o.id = c.objeto_id
+       (SELECT count(*) FROM catalogo.coluna c JOIN o ON o.id = c.objeto_id) AS colunas,
+       (SELECT count(*) FROM catalogo.coluna c JOIN o ON o.id = c.objeto_id
          WHERE o.tem_registros)                                      AS colunas_com_registros,
-       (SELECT count(*) FROM catalogo.restricao)                     AS restricoes,
-       (SELECT count(*) FROM catalogo.indice)                        AS indices,
-       (SELECT count(*) FROM catalogo.relacionamento)                AS relacionamentos,
-       (SELECT count(*) FROM catalogo.amostra)                       AS amostras,
-       (SELECT count(*) FROM catalogo.vw_orfas)                      AS orfas,
+       (SELECT count(*) FROM catalogo.restricao r JOIN o ON o.id = r.objeto_id) AS restricoes,
+       (SELECT count(*) FROM catalogo.indice i JOIN o ON o.id = i.objeto_id)    AS indices,
+       (SELECT count(*) FROM catalogo.relacionamento
+         WHERE esquema_id = %(e)s)                                   AS relacionamentos,
+       (SELECT count(*) FROM catalogo.amostra a JOIN o ON o.id = a.objeto_id)   AS amostras,
+       (SELECT count(*) FROM catalogo.vw_orfas WHERE esquema_id = %(e)s)       AS orfas,
        (SELECT count(*) FROM catalogo.vw_orfas v
-          JOIN catalogo.objeto o ON o.nome = v.nome
-         WHERE o.tem_registros)                                      AS orfas_com_registros
+          JOIN o ON o.nome = v.nome
+         WHERE v.esquema_id = %(e)s AND o.tem_registros)             AS orfas_com_registros
 """
 
 SQL_CLASSES = """
 WITH c AS (
   SELECT o.nome,
          EXISTS (SELECT 1 FROM catalogo.relacionamento r
-                  WHERE r.destino_tabela = o.nome) AS tem_dependentes,
+                  WHERE r.esquema_id = o.esquema_id
+                    AND r.destino_tabela = o.nome) AS tem_dependentes,
          EXISTS (SELECT 1 FROM catalogo.relacionamento r
-                  WHERE r.origem_tabela = o.nome)  AS tem_dependencias
+                  WHERE r.esquema_id = o.esquema_id
+                    AND r.origem_tabela = o.nome)  AS tem_dependencias
     FROM catalogo.objeto o
-   WHERE o.tem_registros
+   WHERE o.tem_registros AND o.esquema_id = %(e)s
 )
 SELECT count(*) FILTER (WHERE tem_dependentes)                        AS dependentes,
        count(*) FILTER (WHERE tem_dependencias)                       AS dependencias,
@@ -429,7 +475,7 @@ SELECT count(*) FILTER (WHERE tem_dependentes)                        AS depende
 SQL_MAIORES = """
 SELECT nome, num_registros, n_colunas, fks_saindo, fks_entrando
   FROM catalogo.vw_resumo
- WHERE num_registros IS NOT NULL
+ WHERE num_registros IS NOT NULL AND esquema_id = %(e)s
  ORDER BY num_registros DESC
  LIMIT 10
 """
@@ -551,14 +597,21 @@ def gerar_visao_geral(usuario=None):
         extracao = catalogo.um(
             "SELECT * FROM catalogo.extracao WHERE id = 1", (), "estado da extração"
         )
-        contagens = catalogo.um(SQL_CONTAGENS, (), "contagens do catálogo")
-        classes = catalogo.um(SQL_CLASSES, (), "classificação por relacionamento")
-        maiores = catalogo.consultar(SQL_MAIORES, (), "maiores objetos")
+        esquema = {"e": esquemas.atual_id()}
+        contagens = catalogo.um(SQL_CONTAGENS, esquema, "contagens do catálogo")
+        classes = catalogo.um(SQL_CLASSES, esquema, "classificação por relacionamento")
+        maiores = catalogo.consultar(SQL_MAIORES, esquema, "maiores objetos")
+        resumo = esquemas.resumo()
     except catalogo.ConsultaFalhou as falha:
         return pagina_erro(falha, usuario, VOLTAR)
 
     itens, erros = montar_extracao(extracao)
     colunas, celulas = montar_tabela(CAMPOS_MAIORES, maiores)
+    atual = esquemas.atual_id()
+    for linha in resumo:
+        linha["atual"] = linha["id"] == atual
+        linha["pct_descritos"] = percentual(linha["descritos"], linha["objetos"])
+        linha["pct_vetorizados"] = percentual(linha["vetorizados"], linha["objetos"])
     html = layout.render(
         "oracle.html",
         "Catálogo Oracle",
@@ -574,8 +627,16 @@ def gerar_visao_geral(usuario=None):
         erros=erros,
         colunas=colunas,
         linhas=celulas,
+        resumo=resumo,
     )
     return html, 200
+
+
+def percentual(parte, todo):
+    """"42%" -- ou "—" quando nao ha base, para nao exibir 0% de nada."""
+    if not todo:
+        return "—"
+    return f"{round(100 * parte / todo)}%"
 
 
 # --------------------------------------------------------------------------
@@ -589,11 +650,11 @@ SELECT o.*,
          WHERE c.objeto_id = o.id AND c.embedding IS NOT NULL)             AS n_vetores,
        (SELECT count(*) FROM catalogo.amostra a WHERE a.objeto_id = o.id)  AS n_amostra,
        (SELECT count(*) FROM catalogo.relacionamento r
-         WHERE r.origem_tabela = o.nome)                                   AS fks_saindo,
+         WHERE r.esquema_id = o.esquema_id AND r.origem_tabela = o.nome)   AS fks_saindo,
        (SELECT count(*) FROM catalogo.relacionamento r
-         WHERE r.destino_tabela = o.nome)                                  AS fks_entrando
+         WHERE r.esquema_id = o.esquema_id AND r.destino_tabela = o.nome)  AS fks_entrando
   FROM catalogo.objeto o
- WHERE o.nome = %s
+ WHERE o.nome = %s AND o.esquema_id = %s
 """
 
 SQL_DESCRICAO = "SELECT * FROM catalogo.descricao_ia WHERE objeto_id = %s"
@@ -642,8 +703,9 @@ CAMPOS_AMOSTRA = [
 ]
 
 
-def buscar_objeto(nome):
-    return catalogo.um(SQL_OBJETO, (nome,), f"objeto {nome}")
+def buscar_objeto(nome, esquema_id):
+    """O objeto pelo nome DENTRO do schema: o nome so e unico por schema."""
+    return catalogo.um(SQL_OBJETO, (nome, esquema_id), f"objeto {nome}")
 
 
 def montar_colunas_detalhe(objeto, descricao):
@@ -735,12 +797,12 @@ def montar_vinculos(entrando, saindo, descricao):
 def gerar_detalhe(nome, usuario=None, aviso=None):
     caminho = f"/oracle/objetos/{nome}"
     try:
-        objeto = buscar_objeto(nome)
+        objeto = buscar_objeto(nome, esquemas.atual_id())
         if not objeto:
             return None, 404
 
         descricao = catalogo.um(SQL_DESCRICAO, (objeto["id"],), "descrição gravada")
-        entrando, saindo = grafo.vizinhos(nome)
+        entrando, saindo = grafo.vizinhos(nome, objeto["esquema_id"])
         restricoes = catalogo.consultar(
             SQL_RESTRICOES_DETALHE, (objeto["id"],), "restrições do objeto"
         )
@@ -816,7 +878,9 @@ def gerar_grafo(usuario=None):
     """Pagina da Visao Grafo. Os dados vem depois, por /oracle/grafo.json."""
     try:
         total = catalogo.um(
-            f"SELECT count(*) AS total FROM ({grafo.ALVO}) alvo", (), "tamanho do grafo"
+            f"SELECT count(*) AS total FROM ({grafo.ALVO}) alvo",
+            {"e": esquemas.atual_id()},
+            "tamanho do grafo",
         )["total"]
     except catalogo.ConsultaFalhou as falha:
         return pagina_erro(falha, usuario, "/oracle/grafo")
@@ -858,7 +922,7 @@ def modelo_do_mapa():
     Setup: o mapa nao chama API nenhuma, entao o que manda e o que ESTA no banco.
     Um provedor trocado depois nao pode apagar o mapa dos vetores ja gravados.
     """
-    espacos = busca.cobertura()
+    espacos = busca.cobertura(esquemas.atual_id())
     if not espacos:
         return None
     return max(espacos, key=lambda espaco: espaco["objetos"])["modelo"]
@@ -912,10 +976,12 @@ def dados_do_mapa(excluir="", termo="", topk=TOPK_MAPA, par=None):
     if termo:
         # escopo "ambos": a tabela entra tanto pela propria descricao quanto por
         # um campo dela ter casado. E o que traz mais tabela pertinente.
-        linhas, meta_busca = busca.buscar(termo, "ambos", topk, par, excluir)
+        linhas, meta_busca = busca.buscar(
+            termo, esquemas.atual_id(), "ambos", topk, par, excluir
+        )
         nomes = [linha["nome"] for linha in linhas]
 
-    dados = mapa.mapa(modelo, excluir, nomes)
+    dados = mapa.mapa(modelo, esquemas.atual_id(), excluir, nomes)
     dados["meta"]["termo"] = termo
     dados["meta"]["busca"] = meta_busca
     return dados
@@ -981,7 +1047,7 @@ def gerar_busca(termo="", escopo="ambos", topk=20, par=None, excluir="", usuario
 
     try:
         pares = provedores.disponiveis("embedding")
-        espacos = busca.cobertura()
+        espacos = busca.cobertura(esquemas.atual_id())
     except catalogo.ConsultaFalhou as falha:
         return pagina_erro(falha, usuario, BUSCA)
     except provedores.ConfiguracaoInvalida as erro:
@@ -990,7 +1056,9 @@ def gerar_busca(termo="", escopo="ambos", topk=20, par=None, excluir="", usuario
 
     if termo and pares:
         try:
-            linhas, meta = busca.buscar(termo, escopo, topk, par, excluir)
+            linhas, meta = busca.buscar(
+                termo, esquemas.atual_id(), escopo, topk, par, excluir
+            )
         except catalogo.ConsultaFalhou as falha:
             return pagina_erro(falha, usuario, BUSCA)
         except (embeddings.EmbutirFalhou, provedores.ConfiguracaoInvalida) as falha:

@@ -3,7 +3,14 @@
 
 {% block conteudo %}
 <section class="hero">
-  <div class="crumb">{% block crumb %}{{ crumb }}{% endblock %}</div>
+  <div class="crumb">{% block crumb %}{{ crumb }}{% endblock %}
+    {# O pre-filtro so vale para o catalogo e os lotes; Setup e Servico nao filtram #}
+    {% if esquema_atual and (caminho.startswith('/oracle') or caminho.startswith('/setup/lote')) %}
+    <span class="hero__esquema" title="Schema em uso: troque no cabeçalho">
+      <i data-lucide="database" style="width:12px;height:12px;"></i>{{ esquema_rotulo }}
+    </span>
+    {% endif %}
+  </div>
   <h1>{% block cabecalho %}{{ titulo }}{% endblock %}</h1>
   <p>{% block descricao %}{{ descricao }}{% endblock %}</p>
 </section>

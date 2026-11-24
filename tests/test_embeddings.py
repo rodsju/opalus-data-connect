@@ -115,27 +115,33 @@ def test_pendente_quando_so_o_modelo_mudou():
 # ---------------------------------------------------------------------------
 
 
-def test_onde_sem_filtro_nem_termo_nao_gera_where():
-    assert lote_mod._onde((), "") == ("", ())
+def test_onde_sempre_filtra_pelo_schema_em_uso():
+    """O pre-filtro de schema vem primeiro, e o parametro dele tambem."""
+    assert lote_mod._onde((), "", 7) == (" WHERE o.esquema_id = %s", (7,))
 
 
 def test_onde_combina_filtro_e_termo():
-    onde, params = lote_mod._onde({"registros"}, "PAC")
-    assert onde == " WHERE o.tem_registros AND o.nome ILIKE %s"
-    assert params == ("%PAC%",)
+    onde, params = lote_mod._onde({"registros"}, "PAC", 7)
+    assert onde == " WHERE o.esquema_id = %s AND o.tem_registros AND o.nome ILIKE %s"
+    assert params == (7, "%PAC%")
 
 
 def test_onde_soma_os_filtros_com_and():
-    onde, _ = lote_mod._onde({"registros", "sem_vetor"}, "")
+    onde, _ = lote_mod._onde({"registros", "sem_vetor"}, "", 7)
     assert onde.startswith(" WHERE ")
     assert " AND " in onde
 
 
 def test_filtro_de_vetor_exige_descricao():
     """Tabela sem descricao nao tem texto para vetorizar -- entraria so para falhar."""
-    onde, _ = lote_mod._onde({"sem_vetor"}, "")
+    onde, _ = lote_mod._onde({"sem_vetor"}, "", 7)
     assert "o.embedding IS NULL" in onde
     assert "descricao_ia" in onde
+
+
+def test_filtros_por_nome_do_lote_ficam_no_schema_do_objeto():
+    assert "r.esquema_id = o.esquema_id" in lote_mod.COM_DEPENDENTES
+    assert "r.esquema_id = o.esquema_id" in lote_mod.COM_DEPENDENCIAS
 
 
 @pytest.mark.parametrize("chave,param", [(c, p) for c, p, _, _ in lote_mod.FILTROS])

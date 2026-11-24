@@ -85,6 +85,9 @@ class Requisicao(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     objetos: list[ObjetoEntrada]
+    # Nome do schema (catalogo.esquema.nome). Opcional enquanto o nome do objeto
+    # for unico no catalogo; com o mesmo nome em dois schemas, obrigatorio.
+    esquema: str | None = None
     # Desligar serve para carga em massa, quando a intencao e vetorizar tudo
     # depois num lote so. O vetor fica velho ate la -- e o campo existe
     # justamente para que isso seja uma escolha declarada, nao um efeito.
@@ -111,6 +114,37 @@ SELECT rotulo, resumo, funcao, dominio, dependencias, dependentes, campos
 """
 
 SQL_NOMES_DE_COLUNA = "SELECT nome FROM catalogo.coluna WHERE objeto_id = %s"
+
+# Em que schemas um nome de objeto existe. A API nao tem o cookie do seletor de
+# schema -- quem chama e outro sistema --, entao o schema vem no corpo ou e
+# deduzido quando o nome e unico.
+SQL_ESQUEMAS_DO_NOME = """
+SELECT o.esquema_id, e.nome AS esquema
+  FROM catalogo.objeto o JOIN catalogo.esquema e ON e.id = o.esquema_id
+ WHERE o.nome = %s
+ ORDER BY e.nome
+"""
+
+
+def esquema_do_objeto(nome, esquema=None, candidatos=None):
+    """esquema_id onde o objeto `nome` mora. Levanta EntradaInvalida se nao achar
+    ou se o nome existir em mais de um schema e o corpo nao disser qual."""
+    if candidatos is None:
+        candidatos = catalogo.consultar(SQL_ESQUEMAS_DO_NOME, (nome,), f"schemas de {nome}")
+    if esquema:
+        candidatos = [c for c in candidatos if c["esquema"] == esquema]
+    if not candidatos:
+        raise EntradaInvalida(
+            f"Objeto desconhecido: '{nome}'" + (f" no schema '{esquema}'" if esquema else ""),
+            "O nome tem de bater com catalogo.objeto, inclusive na caixa.",
+        )
+    if len(candidatos) > 1:
+        raise EntradaInvalida(
+            f"Nome ambíguo: '{nome}' existe nos schemas "
+            f"{', '.join(c['esquema'] for c in candidatos)}",
+            "Informe 'esquema' no corpo da requisição.",
+        )
+    return candidatos[0]["esquema_id"]
 
 # O DO UPDATE nao lista provedor, modelo, gerado_em, linhas_no_prompt nem os
 # tokens de proposito: sao a ficha da geracao por IA, e uma edicao de texto nao
@@ -166,9 +200,9 @@ def _escolher(novo, atual, padrao=""):
     return novo.strip() if isinstance(novo, str) else novo
 
 
-def gravar_descricao(entrada, autor=None):
+def gravar_descricao(entrada, autor=None, esquema=None):
     """Mescla o que veio com o que esta gravado. Devolve (objeto, criada)."""
-    objeto = oracle.buscar_objeto(entrada.nome)
+    objeto = oracle.buscar_objeto(entrada.nome, esquema_do_objeto(entrada.nome, esquema))
     if not objeto:
         raise EntradaInvalida(
             f"Objeto desconhecido: '{entrada.nome}'",
@@ -251,10 +285,10 @@ def _erro(falha):
     }
 
 
-def _um_objeto(entrada, par, vetorizar, autor, extras=None):
+def _um_objeto(entrada, par, vetorizar, autor, extras=None, esquema=None):
     """Grava a descricao mesclada de um objeto e revetoriza. Devolve o item da resposta."""
     try:
-        objeto, criada = gravar_descricao(entrada, autor)
+        objeto, criada = gravar_descricao(entrada, autor, esquema)
     except (EntradaInvalida, catalogo.ConsultaFalhou) as falha:
         return {"nome": entrada.nome, "ok": False, "erro": _erro(falha), **(extras or {})}
 
@@ -317,7 +351,7 @@ def aplicar(requisicao, autor=None):
 
     par = config.par_de_embedding() if requisicao.vetorizar else None
     resultados = [
-        _um_objeto(entrada, par, requisicao.vetorizar, autor)
+        _um_objeto(entrada, par, requisicao.vetorizar, autor, esquema=requisicao.esquema)
         for entrada in requisicao.objetos
     ]
     return _resumo(resultados, par, requisicao.vetorizar)
@@ -357,6 +391,7 @@ class RequisicaoDicionario(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     colunas: list[LinhaDicionario]
+    esquema: str | None = None
     vetorizar: bool = True
 
 
@@ -395,6 +430,7 @@ def aplicar_dicionario(requisicao, autor=None):
         entrada = ObjetoEntrada(nome=nome, campos=campos)
         extras = {"colunas": [campo.coluna for campo in campos]}
         resultados.append(
-            _um_objeto(entrada, par, requisicao.vetorizar, autor, extras)
+            _um_objeto(entrada, par, requisicao.vetorizar, autor, extras,
+                       esquema=requisicao.esquema)
         )
     return _resumo(resultados, par, requisicao.vetorizar)

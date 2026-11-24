@@ -655,7 +655,9 @@ def garantir_esquema(conexao, tipo, host, porta, base, schema):
             """
             INSERT INTO catalogo.servidor (tipo, host, porta, base, nome)
             VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (tipo, host, porta, base) DO UPDATE SET nome = EXCLUDED.nome
+            -- DO UPDATE so para o RETURNING devolver o id: o nome que o usuario
+            -- deu em Setup > Servidores fica como esta
+            ON CONFLICT (tipo, host, porta, base) DO UPDATE SET nome = catalogo.servidor.nome
             RETURNING id
             """,
             (tipo, host, int(porta), base, f"{host}/{base}"),

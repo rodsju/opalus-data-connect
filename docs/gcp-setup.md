@@ -375,6 +375,67 @@ Se o DBA ligar o NNE como obrigatório, o app passa a falhar no login. Há duas 
 **prd.** O projeto de prd não tem VPN para o IW, nem a API do Compute ligada. O
 `deploy-prd.yaml` sobe sem `ORACLE_*` e pela `atlas-services-subnet`.
 
+## 9. Servidores de origem (Setup › Servidores)
+
+A tela `/setup/servidores` cadastra os servidores de `catalogo.servidor` e os schemas de
+cada um. É a origem que o `esquema_id` de cada objeto aponta. O formulário tem o painel
+"Conectar no GCP", com os comandos já preenchidos com o projeto e a SA de runtime.
+
+### 9.1 DDL (uma vez por ambiente)
+
+As colunas de credencial vêm do bloco "Credencial do servidor" do
+`scripts/catalogo_schema.sql`. Local: `make schema`. Na nuvem, cole **só esse bloco** no
+Cloud SQL Studio como `postgres`, no database `atlas-connect`. Funciona porque o
+`postgres` é membro do papel da SA, que é a dona das tabelas (passo 5.4). Sem o DDL, a
+tela mostra `column "usuario" does not exist`.
+
+**O pré-filtro de schema também muda o DDL.** As quatro views (`vw_dicionario`,
+`vw_relacionamentos`, `vw_resumo` e `vw_orfas`) ganharam a coluna `esquema_id`, e os
+índices `relacionamento_esquema_origem_idx` e `relacionamento_esquema_destino_idx`
+foram criados. Cole também o bloco "Views" do `scripts/catalogo_schema.sql`. Sem ele,
+todas as telas do catálogo dão `column "esquema_id" does not exist`. O mais simples é
+colar o arquivo inteiro, que pode ser reaplicado.
+
+### 9.2 Dois perfis por servidor: Local e GCP
+
+O mesmo Oracle é acessado com credenciais diferentes em cada lugar, então cada servidor
+tem dois perfis. O app usa o do ambiente em que roda: **GCP** quando existe `K_SERVICE`
+(o Cloud Run define essa variável), **Local** fora dele. A tela marca o perfil em uso, e
+cada perfil tem o seu botão de teste.
+
+| Perfil | Usuário (IW) | Fontes da senha aceitas |
+|---|---|---|
+| Local | o pessoal, entre aspas duplas como no `.env` | variável de ambiente (`ORACLE_PASSWORD` do `.env`), cifrada no banco (`IA_SENHA_MESTRA`) ou Secret Manager (com ADC) |
+| GCP (Cloud Run) | `DS_IW` | Secret Manager, lido a cada conexão e **sem redeploy**, ou variável do `--set-secrets` |
+
+Usuário em branco significa perfil não configurado. Cada servidor precisa de pelo
+menos um perfil.
+
+Nome curto de secret é resolvido no `PROJECT_ID` do ambiente. Para outro projeto, ou
+uma versão fixa, informe `projects/<p>/secrets/<nome>[/versions/<v>]`. A SA de
+runtime precisa de `roles/secretmanager.secretAccessor` **em cada secret**. O Secret
+Manager responde `403` também quando o secret não existe, então confira os dois.
+
+### 9.3 O Oracle do IW (`192.168.30.4/IWTST`)
+
+O DDL já preenche o perfil GCP com o que o `deploy-hml.yaml` usa: `DS_IW` e o secret
+`atlas-iw-oracle-ds-iw-password`, ao qual a SA já tem acesso (seção 8). O perfil Local
+fica com a fonte `env ORACLE_PASSWORD` e sem usuário: preencha o seu na tela. Depois,
+no Cloud Run, use **Testar perfil GCP**.
+
+### 9.4 Servidor novo
+
+1. **Rede.** O host precisa ser alcançável pela subnet do serviço. Em hml, só a faixa
+   `192.168.30.0/24` passa pela VPN, saindo da `atlas-psc-subnet`. Outra rede exige
+   rota ou túnel no Terraform da fundação.
+2. **Secret e permissão.** Use os comandos do painel "Conectar no GCP" do formulário.
+3. **Cadastro e teste.** Preencha o perfil GCP com a fonte Secret Manager e use
+   **Testar perfil GCP** no app do Cloud Run.
+
+**Ainda não usam o cadastro:** o mapeador (`scripts/mapear_oracle.py`) e o check
+"Origem (Oracle)" do `/health` continuam lendo `ORACLE_*` do ambiente. O teste de
+conexão da tela só conhece Oracle.
+
 ## Limitações
 
 - **Lote de descrições.** O lote roda num subprocesso dentro da instância

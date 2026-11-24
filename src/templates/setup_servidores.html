@@ -1,0 +1,23 @@
+{# Lista dos servidores de origem (catalogo.servidor). #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, painel, tabela %}
+
+{% block miolo %}
+{% if aviso %}
+  {% call alerta(tone='danger', icone='alert-circle') %}
+  <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+{% call painel('Servidores', total ~ ' cadastrados') %}
+  {% if linhas %}
+  {{ tabela(colunas, linhas, 'completa') }}
+  {% else %}
+  <p class="ds-vazio">Nenhum servidor cadastrado ainda.</p>
+  {% endif %}
+{% endcall %}
+
+<a class="ds-btn" href="/setup/servidores/novo">
+  <i data-lucide="plus" style="width:16px;height:16px;"></i>Novo servidor
+</a>
+{% endblock %}

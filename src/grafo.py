@@ -12,13 +12,15 @@ var(--brand) resolve normalmente e o desenho acompanha o tema.
 
 from . import catalogo
 
+# Tudo aqui casa por (esquema, nome): relacionamento guarda so o NOME das
+# tabelas, e o mesmo nome pode existir em outro schema. %(e)s e o esquema_id.
 SQL_VIZINHOS = """
 WITH arestas AS (
   SELECT destino_tabela AS vizinho, 'saindo' AS direcao, origem_colunas AS colunas
-    FROM catalogo.relacionamento WHERE origem_tabela = %s
+    FROM catalogo.relacionamento WHERE esquema_id = %(e)s AND origem_tabela = %(nome)s
   UNION ALL
   SELECT origem_tabela, 'entrando', origem_colunas
-    FROM catalogo.relacionamento WHERE destino_tabela = %s
+    FROM catalogo.relacionamento WHERE esquema_id = %(e)s AND destino_tabela = %(nome)s
 )
 SELECT a.vizinho,
        a.direcao,
@@ -26,7 +28,7 @@ SELECT a.vizinho,
        string_agg(DISTINCT array_to_string(a.colunas, ','), ' · ') AS colunas,
        coalesce(o.tem_registros, false)                          AS tem_registros
   FROM arestas a
-  LEFT JOIN catalogo.objeto o ON o.nome = a.vizinho
+  LEFT JOIN catalogo.objeto o ON o.esquema_id = %(e)s AND o.nome = a.vizinho
  GROUP BY a.vizinho, a.direcao, o.tem_registros
  ORDER BY count(*) DESC, a.vizinho
 """
@@ -44,9 +46,11 @@ ESPACO_LINHA = 40
 VAO = 130  # distancia horizontal entre a coluna lateral e o centro
 
 
-def vizinhos(nome):
+def vizinhos(nome, esquema_id):
     """Devolve (entrando, saindo) -- cada um ja ordenado por numero de FKs."""
-    linhas = catalogo.consultar(SQL_VIZINHOS, (nome, nome), f"vizinhanca de {nome}")
+    linhas = catalogo.consultar(
+        SQL_VIZINHOS, {"e": esquema_id, "nome": nome}, f"vizinhanca de {nome}"
+    )
     entrando = [linha for linha in linhas if linha["direcao"] == "entrando"]
     saindo = [linha for linha in linhas if linha["direcao"] == "saindo"]
     return entrando, saindo
@@ -212,11 +216,11 @@ def legenda(entrando, saindo):
 # arvore nenhuma, porque a aresta so entra quando as duas pontas estao no conjunto.
 ALVO = """
   SELECT o.nome, o.rotulo FROM catalogo.vw_resumo o
-   WHERE o.tem_registros
+   WHERE o.tem_registros AND o.esquema_id = %(e)s
      AND (EXISTS (SELECT 1 FROM catalogo.relacionamento r
-                   WHERE r.destino_tabela = o.nome)
+                   WHERE r.esquema_id = %(e)s AND r.destino_tabela = o.nome)
        OR EXISTS (SELECT 1 FROM catalogo.relacionamento r
-                   WHERE r.origem_tabela = o.nome))
+                   WHERE r.esquema_id = %(e)s AND r.origem_tabela = o.nome))
 """
 
 SQL_GRAFO_NOS = f"""
@@ -224,9 +228,9 @@ WITH alvo AS ({ALVO})
 SELECT a.nome,
        a.rotulo,
        (SELECT count(*) FROM catalogo.relacionamento r
-         WHERE r.destino_tabela = a.nome)                    AS dependentes,
+         WHERE r.esquema_id = %(e)s AND r.destino_tabela = a.nome) AS dependentes,
        (SELECT count(*) FROM catalogo.relacionamento r
-         WHERE r.origem_tabela = a.nome)                     AS dependencias
+         WHERE r.esquema_id = %(e)s AND r.origem_tabela = a.nome)  AS dependencias
   FROM alvo a
  ORDER BY dependentes DESC, a.nome
 """
@@ -235,7 +239,8 @@ SQL_GRAFO_ARESTAS = f"""
 WITH alvo AS ({ALVO})
 SELECT DISTINCT r.origem_tabela AS origem, r.destino_tabela AS destino
   FROM catalogo.relacionamento r
- WHERE r.origem_tabela  IN (SELECT nome FROM alvo)
+ WHERE r.esquema_id = %(e)s
+   AND r.origem_tabela  IN (SELECT nome FROM alvo)
    AND r.destino_tabela IN (SELECT nome FROM alvo)
 """
 
@@ -246,19 +251,22 @@ SELECT DISTINCT r.origem_tabela AS origem, r.destino_tabela AS destino
 SQL_SEMENTES = """
 SELECT o.nome
   FROM catalogo.objeto o
- WHERE o.tem_registros
-   AND EXISTS (SELECT 1 FROM catalogo.relacionamento r WHERE r.destino_tabela = o.nome)
-   AND NOT EXISTS (SELECT 1 FROM catalogo.relacionamento r WHERE r.origem_tabela = o.nome)
+ WHERE o.tem_registros AND o.esquema_id = %(e)s
+   AND EXISTS (SELECT 1 FROM catalogo.relacionamento r
+                WHERE r.esquema_id = %(e)s AND r.destino_tabela = o.nome)
+   AND NOT EXISTS (SELECT 1 FROM catalogo.relacionamento r
+                    WHERE r.esquema_id = %(e)s AND r.origem_tabela = o.nome)
  ORDER BY (SELECT count(*) FROM catalogo.relacionamento r
-            WHERE r.destino_tabela = o.nome) DESC, o.nome
+            WHERE r.esquema_id = %(e)s AND r.destino_tabela = o.nome) DESC, o.nome
 """
 
 
-def grafo_completo():
+def grafo_completo(esquema_id):
     """Nos e arestas no formato que o cytoscape espera, mais as sementes."""
-    nos = catalogo.consultar(SQL_GRAFO_NOS, (), "nós do grafo")
-    arestas = catalogo.consultar(SQL_GRAFO_ARESTAS, (), "arestas do grafo")
-    sementes = catalogo.consultar(SQL_SEMENTES, (), "raízes do grafo")
+    e = {"e": esquema_id}
+    nos = catalogo.consultar(SQL_GRAFO_NOS, e, "nós do grafo")
+    arestas = catalogo.consultar(SQL_GRAFO_ARESTAS, e, "arestas do grafo")
+    sementes = catalogo.consultar(SQL_SEMENTES, e, "raízes do grafo")
     return {
         "nodes": [
             {

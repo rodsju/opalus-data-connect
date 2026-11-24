@@ -54,6 +54,7 @@ MENU = [
     {
         "titulo": "Setup",
         "itens": [
+            {"href": "/setup/servidores", "icone": "server", "rotulo": "Servidores"},
             {"href": "/setup/provedores", "icone": "bot", "rotulo": "AI Providers"},
             {"href": "/setup/lote", "icone": "layers", "rotulo": "Lote de descrições"},
             # Mesma pagina, outra tarefa. O ativo do menu casa por href exato, entao
@@ -159,7 +160,20 @@ env.globals.update(
 
 
 def render(template, titulo, usuario=None, caminho="/", **contexto):
-    """Renderiza uma pagina completa (a template extende base.html)."""
+    """Renderiza uma pagina completa (a template extende base.html).
+
+    O seletor de schema do cabecalho le o schema do request (src/esquemas.py),
+    fixado pelo middleware -- nenhuma pagina precisa repassar isso.
+    """
+    from . import esquemas  # importa catalogo, que importa este modulo
+
+    atual = esquemas.atual()
     return env.get_template(template).render(
-        titulo=titulo, usuario=usuario, caminho=caminho, **contexto
+        titulo=titulo,
+        usuario=usuario,
+        caminho=caminho,
+        esquemas=esquemas.lista_atual(),
+        esquema_atual=atual,
+        esquema_rotulo=esquemas.rotulo(atual) if atual else "",
+        **contexto,
     )

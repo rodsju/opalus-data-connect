@@ -151,7 +151,13 @@ LEXICAL = """
 
 # Prefixos que o usuario mandou fora (BKP_, X...). Com a lista vazia o LIKE ANY
 # devolve false e o NOT deixa tudo passar -- nao precisa de caso especial.
-EXCLUI = "AND NOT (upper({nome}) LIKE ANY (%(excluir)s::text[]))"
+#
+# O pre-filtro de schema vai junto: todo uso de EXCLUI e sobre o alias `o` de
+# catalogo.objeto, e e ele que limita a busca ao schema em uso.
+EXCLUI = (
+    "AND NOT (upper({nome}) LIKE ANY (%(excluir)s::text[])) "
+    "AND o.esquema_id = %(esquema)s"
+)
 
 # Porte do objeto (registros e colunas) fica FORA do subselect de proposito: o
 # LIMIT ja aconteceu la dentro, entao a contagem de colunas roda topk vezes e nao
@@ -274,17 +280,22 @@ SELECT modelo,
        sum(objetos)::int AS objetos,
        sum(colunas)::int AS colunas
   FROM (SELECT embedding_modelo AS modelo, count(*) AS objetos, 0 AS colunas
-          FROM catalogo.objeto WHERE embedding IS NOT NULL GROUP BY embedding_modelo
+          FROM catalogo.objeto
+         WHERE embedding IS NOT NULL AND esquema_id = %s GROUP BY embedding_modelo
          UNION ALL
-        SELECT embedding_modelo, 0, count(*)
-          FROM catalogo.coluna WHERE embedding IS NOT NULL GROUP BY embedding_modelo) t
+        SELECT c.embedding_modelo, 0, count(*)
+          FROM catalogo.coluna c JOIN catalogo.objeto o ON o.id = c.objeto_id
+         WHERE c.embedding IS NOT NULL AND o.esquema_id = %s
+         GROUP BY c.embedding_modelo) t
  GROUP BY modelo ORDER BY modelo
 """
 
 
-def cobertura():
-    """Quantas tabelas e campos existem em cada modelo. Nao chama API nenhuma."""
-    return catalogo.consultar(SQL_COBERTURA, (), "cobertura dos vetores")
+def cobertura(esquema_id):
+    """Quantas tabelas e campos do schema existem em cada modelo. Sem API."""
+    return catalogo.consultar(
+        SQL_COBERTURA, (esquema_id, esquema_id), "cobertura dos vetores"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -292,7 +303,7 @@ def cobertura():
 # --------------------------------------------------------------------------
 
 
-def buscar(termo, escopo="ambos", topk=20, par=None, excluir=""):
+def buscar(termo, esquema_id, escopo="ambos", topk=20, par=None, excluir=""):
     """Devolve (linhas, meta). UMA chamada paga de embedding por busca.
 
     Cada linha ja traz `relevancia` (0..100) pronta para a tela; `cos` e `score`
@@ -310,6 +321,7 @@ def buscar(termo, escopo="ambos", topk=20, par=None, excluir=""):
         # compara como substring literal, e os dois tem de dizer a mesma coisa.
         "tokens": [escapar_like(t) for t in tokens(termo)],
         "excluir": prefixos(excluir),
+        "esquema": esquema_id,
         "topk": topk,
     }
 

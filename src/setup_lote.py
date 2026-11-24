@@ -1,6 +1,6 @@
 """Conteudo das rotas /setup/lote: selecao das tabelas e progresso do lote."""
 
-from . import catalogo, ia, layout, lote as lote_mod, provedores
+from . import catalogo, esquemas, ia, layout, lote as lote_mod, provedores
 
 LISTA = "/setup/lote"
 
@@ -80,7 +80,7 @@ def gerar_selecao(ativos=(), termo="", paralelismo=4, usuario=None, aviso=None,
     """Lista filtrada + formulario de disparo."""
     config = TAREFA[tarefa]
     try:
-        linhas, total = lote_mod.candidatas(ativos, termo, tarefa=tarefa)
+        linhas, total = lote_mod.candidatas(esquemas.atual_id(), ativos, termo, tarefa=tarefa)
         pares = provedores.disponiveis(config["capacidade"])
         aberto = lote_mod.em_andamento(tarefa)
         recentes = lote_mod.listar()

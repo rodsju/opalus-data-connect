@@ -78,6 +78,51 @@ html, body {
   margin-left: auto;
 }
 
+/* Seletor do schema em uso: o pre-filtro de todas as telas do catalogo */
+.app-header__esquema {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+}
+
+.app-header__esquema select {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 6px var(--space-3);
+  max-width: 320px;
+}
+
+.app-header__esquema select:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: -1px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.ds-esquemas__atual td { background: var(--brand-soft, var(--surface-sunken)); font-weight: var(--weight-semibold); }
+
+.hero__esquema {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: var(--space-3);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+}
+
 .app-header__badge {
   font-family: var(--font-ui);
   font-size: var(--text-2xs);
@@ -923,6 +968,26 @@ html, body {
 }
 
 /* ---------- Formularios do Setup ---------- */
+/* Os cards de um formulario ficam dentro do <form>, fora do gap do .wrap:
+   o form repete o mesmo espacamento entre os seus filhos. */
+.ds-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.ds-form > .ds-form__acoes { margin-top: 0; }
+
+/* Texto de ajuda dentro de um card. Nao e .ds-vazio, que e estado vazio
+   (centralizado, com respiro de lista sem linhas). */
+.ds-nota {
+  margin: 0 0 var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+.ds-nota:last-child { margin-bottom: 0; }
+
 .ds-campo {
   display: block;
   margin-bottom: var(--space-5);
@@ -1020,6 +1085,7 @@ html, body {
 @media (max-width: 560px) {
   .app-header { gap: var(--space-3); padding: 0 var(--space-5); }
   .app-header__badge { display: none; }
+  .app-header__esquema select { max-width: 160px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

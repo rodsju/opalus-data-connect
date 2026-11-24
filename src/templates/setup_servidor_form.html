@@ -1,0 +1,255 @@
+{# Formulario de criar/editar servidor de origem. A senha e write-only. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, painel %}
+
+{% set v = valores if valores else (servidor or {}) %}
+
+{% block miolo %}
+{% if aviso %}
+  {% call alerta(tone='danger', icone='alert-circle') %}
+  <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+{% if teste %}
+  {% call alerta(tone='success' if teste.ok else 'danger') %}
+  <strong>{{ 'Conexão OK' if teste.ok else 'Falhou' }}.</strong> {{ teste.detalhe }}
+  {% if teste.ms is not none %}<span class="mono">({{ '%.0f' % teste.ms }} ms)</span>{% endif %}
+  {% endcall %}
+{% endif %}
+
+<form class="ds-form" method="post"
+      action="{{ '/setup/servidores/' ~ servidor.id if servidor else '/setup/servidores' }}">
+  {% call painel(servidor.nome if servidor else 'Novo servidor') %}
+  <label class="ds-campo">
+    <span>Nome</span>
+    <input type="text" name="nome" value="{{ v.nome or '' }}" required
+           placeholder="IW Geriatrics (homolog)">
+    <small>Rótulo de tela. O mapeador não sobrescreve.</small>
+  </label>
+
+  <label class="ds-campo">
+    <span>Tipo</span>
+    <select name="tipo" id="servidor-tipo">
+      {% for t in tipos %}
+      <option value="{{ t }}" data-porta="{{ portas[t] }}"
+              {% if (v.tipo or 'oracle') == t %} selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+    <small>O teste de conexão e o mapeador hoje só falam Oracle.</small>
+  </label>
+
+  <label class="ds-campo">
+    <span>Host</span>
+    <input type="text" name="host" value="{{ v.host or '' }}" required placeholder="192.168.30.4">
+  </label>
+
+  <label class="ds-campo">
+    <span>Porta</span>
+    <input type="number" name="porta" id="servidor-porta" min="1" max="65535"
+           value="{{ v.porta or '' }}" placeholder="{{ portas[v.tipo or 'oracle'] }}">
+    <small>Em branco usa a padrão do tipo.</small>
+  </label>
+
+  <label class="ds-campo">
+    <span>Base</span>
+    <input type="text" name="base" value="{{ v.base or '' }}" required placeholder="IWTST">
+    <small>Service name no Oracle; database no Postgres e no SQL Server.</small>
+  </label>
+
+  <label class="ds-busca__opcao">
+    <input type="checkbox" name="ativo" value="1"
+           {% if not servidor or v.ativo %}checked{% endif %}>
+    Ativo
+  </label>
+  {% endcall %}
+
+  {% for nome, perfil in perfis.items() %}
+  {% set sufixo = '_gcp' if nome == 'gcp' else '' %}
+  {% set fonte_atual = v['senha_fonte' ~ sufixo] or perfil.fontes[0][0] %}
+  {% call painel('Conexão ' ~ perfil.rotulo, 'em uso neste ambiente' if nome == perfil_atual else '') %}
+  {% if nome == 'local' %}
+  <p class="ds-nota">Usado quando o app roda fora do Cloud Run (docker compose, VPN na máquina).</p>
+  {% else %}
+  <p class="ds-nota">Usado pelo Cloud Run. A senha vem do Secret Manager (sem redeploy) ou de uma
+     variável do <span class="mono">--set-secrets</span> do deploy.</p>
+  {% endif %}
+
+  <label class="ds-campo">
+    <span>Usuário</span>
+    <input type="text" name="usuario{{ sufixo }}" value="{{ v['usuario' ~ sufixo] or '' }}"
+           autocomplete="off" placeholder="{{ 'DS_IW' if nome == 'gcp' else '"nome.sobrenome"' }}">
+    <small>Em branco: perfil não configurado.{% if nome == 'local' %} Usuário com ponto vai entre aspas
+      duplas, como no <span class="mono">.env</span>.{% endif %}</small>
+  </label>
+
+  <label class="ds-campo">
+    <span>Fonte da senha</span>
+    <select name="senha_fonte{{ sufixo }}" data-perfil="{{ nome }}" class="js-fonte">
+      {% for f, rotulo in perfil.fontes %}
+      <option value="{{ f }}"{% if fonte_atual == f %} selected{% endif %}>{{ rotulo }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label class="ds-campo" data-perfil="{{ nome }}" data-fonte="secret env">
+    <span class="js-ref-rotulo">{{ 'Variável' if fonte_atual == 'env' else 'Secret' }}</span>
+    <input type="text" name="senha_ref{{ sufixo }}" value="{{ v['senha_ref' ~ sufixo] or '' }}"
+           autocomplete="off"
+           placeholder="{{ 'atlas-iw-oracle-ds-iw-password' if nome == 'gcp' else 'ORACLE_PASSWORD' }}">
+    <small>
+      Secret: o nome no projeto <span class="mono">{{ gcp.projeto }}</span>, ou
+      <span class="mono">projects/&lt;p&gt;/secrets/&lt;nome&gt;[/versions/&lt;v&gt;]</span>.
+      Variável: o nome, ex. <span class="mono">ORACLE_PASSWORD</span>.
+    </small>
+  </label>
+
+  {% if nome == 'local' %}
+  <label class="ds-campo" data-perfil="local" data-fonte="cifrada">
+    <span>Senha</span>
+    <input type="password" name="senha" autocomplete="new-password">
+    <small>
+      {% if servidor and servidor.senha_fonte == 'cifrada' and servidor.senha_final %}
+      Deixe em branco para manter a atual (<span class="mono">••••{{ servidor.senha_final }}</span>).
+      {% else %}
+      Cifrada com a <span class="mono">IA_SENHA_MESTRA</span> antes de ir para o banco.
+      {% endif %}
+    </small>
+  </label>
+  {% endif %}
+
+  {% if servidor %}
+  <button class="ds-btn" type="submit" name="perfil" value="{{ nome }}"
+          formaction="/setup/servidores/{{ servidor.id }}/testar" formnovalidate>
+    <i data-lucide="plug-zap" style="width:16px;height:16px;"></i>Testar perfil {{ perfil.rotulo }}
+  </button>
+  {% endif %}
+  {% endcall %}
+  {% endfor %}
+
+  <div class="ds-form__acoes">
+    <button class="ds-btn" type="submit">
+      <i data-lucide="save" style="width:16px;height:16px;"></i>Gravar
+    </button>
+    <a class="ds-busca__limpar" href="/setup/servidores">Cancelar</a>
+  </div>
+  {% if servidor %}
+  <p class="ds-nota">O teste usa o cadastro <strong>gravado</strong>: grave antes de testar uma mudança.
+     Testar o perfil GCP daqui só funciona com ADC que leia o secret e com rota até o host.</p>
+  {% endif %}
+</form>
+
+{% if servidor %}
+{% call painel('Schemas', schemas_do_servidor | length ~ ' cadastrados') %}
+  {% if schemas_do_servidor %}
+  <div class="ds-table-wrap">
+    <table class="ds-table">
+      <thead><tr><th>Schema</th><th class="num">Objetos</th><th></th></tr></thead>
+      <tbody>
+        {% for e in schemas_do_servidor %}
+        <tr>
+          <td class="mono">{{ e.nome }}</td>
+          <td class="num">{{ e.n_objetos | fmt }}</td>
+          <td>
+            {% if e.n_objetos == 0 %}
+            <form method="post" action="/setup/servidores/{{ servidor.id }}/esquemas/{{ e.id }}/excluir"
+                  onsubmit="return confirm('Excluir o schema {{ e.nome }}?')">
+              <button class="ds-busca__limpar" type="submit">Excluir</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="ds-vazio">Nenhum schema ainda. O mapeador cria o do <span class="mono">--schema</span> na primeira execução.</p>
+  {% endif %}
+
+  <form class="ds-form__acoes" method="post" action="/setup/servidores/{{ servidor.id }}/esquemas">
+    <label class="ds-campo" style="margin-bottom:0">
+      <span>Novo schema</span>
+      <input type="text" name="nome" required placeholder="DBIWGERIATRICS">
+    </label>
+    <button class="ds-btn" type="submit">
+      <i data-lucide="plus" style="width:16px;height:16px;"></i>Adicionar
+    </button>
+  </form>
+  <p class="ds-nota">Schema com objetos não sai daqui: excluir apagaria o catálogo dele.</p>
+{% endcall %}
+{% endif %}
+
+{% call painel('Conectar no GCP') %}
+  {% if gcp.no_cloud_run %}
+  <p>Rodando no Cloud Run, projeto <span class="mono">{{ gcp.projeto }}</span>, como
+     <span class="mono">{{ gcp.sa }}</span>.</p>
+  {% else %}
+  <p>Rodando fora do Cloud Run. No GCP o app roda como
+     <span class="mono">{{ gcp.sa }}</span>{% if not gcp.sa_detectada %} (nome esperado){% endif %}.</p>
+  {% endif %}
+
+  <p><strong>1. Rede.</strong> O Cloud Run precisa alcançar
+     <span class="mono">{{ gcp.host }}:{{ gcp.porta }}</span>. Em hml, o Oracle do IW
+     (<span class="mono">192.168.30.0/24</span>) passa pela VPN só saindo da
+     <span class="mono">atlas-psc-subnet</span>. Host em outra rede pede rota ou túnel
+     novo, no Terraform da fundação: não se resolve nesta tela.</p>
+
+  <p><strong>2. Senha no Secret Manager.</strong> Crie o secret (pule se ele já existe,
+     como o <span class="mono">atlas-iw-oracle-ds-iw-password</span>) e dê leitura à SA:</p>
+<pre>export PROJECT={{ gcp.projeto }}
+export SECRET={{ gcp.secret }}
+export SA={{ gcp.sa }}
+
+gcloud secrets describe $SECRET --project=$PROJECT --format='value(name)' \
+  || gcloud secrets create $SECRET --project=$PROJECT --replication-policy=automatic
+
+# A senha vem do teclado: nao fica no historico do shell
+read -rs SENHA && printf '%s' "$SENHA" \
+  | gcloud secrets versions add $SECRET --project=$PROJECT --data-file=- ; unset SENHA
+
+gcloud secrets add-iam-policy-binding $SECRET --project=$PROJECT \
+  --member=serviceAccount:$SA --role=roles/secretmanager.secretAccessor --format=none</pre>
+
+  <p><strong>3. Cadastro.</strong> No perfil <em>GCP (Cloud Run)</em>: o usuário e a fonte
+     <em>Secret Manager</em> com o nome do secret. Não precisa de redeploy: a senha é lida a cada conexão.</p>
+
+  <p><strong>4. Teste.</strong> Grave e, no app do Cloud Run, use <em>Testar perfil GCP</em>. <span class="mono">403</span>
+     do Secret Manager é o passo 2; <span class="mono">DPY-6005</span> ou timeout é o passo 1;
+     <span class="mono">ORA-01017</span> é usuário ou senha.</p>
+{% endcall %}
+
+{% if servidor %}
+<form class="ds-form__perigo" method="post"
+      action="/setup/servidores/{{ servidor.id }}/excluir"
+      onsubmit="return confirm('Excluir o servidor {{ servidor.nome }}?')">
+  <button class="ds-btn ds-btn--perigo" type="submit">
+    <i data-lucide="trash-2" style="width:16px;height:16px;"></i>Excluir servidor
+  </button>
+</form>
+{% endif %}
+
+<script>
+  // Em cada perfil, mostra so o campo da fonte escolhida; sugere a porta do tipo
+  (function () {
+    document.querySelectorAll('.js-fonte').forEach(function (fonte) {
+      var perfil = fonte.dataset.perfil;
+      function aplicar() {
+        document.querySelectorAll('[data-fonte][data-perfil="' + perfil + '"]').forEach(function (el) {
+          el.hidden = el.dataset.fonte.split(' ').indexOf(fonte.value) < 0;
+          var rotulo = el.querySelector('.js-ref-rotulo');
+          if (rotulo) rotulo.textContent = fonte.value === 'env' ? 'Variável' : 'Secret';
+        });
+      }
+      fonte.addEventListener('change', aplicar);
+      aplicar();
+    });
+
+    var tipo = document.getElementById('servidor-tipo');
+    var porta = document.getElementById('servidor-porta');
+    tipo.addEventListener('change', function () {
+      porta.placeholder = tipo.selectedOptions[0].dataset.porta;
+    });
+  })();
+</script>
+{% endblock %}
