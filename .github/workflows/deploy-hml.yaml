@@ -10,6 +10,10 @@ env:
   PROJECT_ID: atlas-dw-hml-511718
   REGION: us-central1
   SERVICE_NAME: atlas-connect
+  # Cloud Run Job de Setup > Importar dados: o mapeador (scripts/mapear_oracle.py)
+  # com a mesma imagem, SA, VPC e secrets do servico. O servico o dispara pela API
+  # do Cloud Run com os argumentos da tela (src/importacao.py).
+  IMPORT_JOB: atlas-connect-import
   RUNTIME_SERVICE_ACCOUNT: atlas-app-connect@atlas-dw-hml-511718.iam.gserviceaccount.com
   IMAGE: us-central1-docker.pkg.dev/atlas-dw-hml-511718/atlas-ar-apps/atlas-connect
   # O servico sai pela VPC (Direct VPC egress) para alcancar o endpoint PSC do
@@ -95,7 +99,36 @@ jobs:
             --subnet="${VPC_SUBNET}" \
             --vpc-egress=private-ranges-only \
             --set-secrets="ORACLE_PASSWORD=atlas-iw-oracle-ds-iw-password:latest" \
-            --set-env-vars="^|^PROJECT_ID=${PROJECT_ID}|ENV=hml|LOG_LEVEL=INFO|DB_IAM_AUTH=true|POSTGRES_DSN=${POSTGRES_DSN}|ORACLE_HOST=${ORACLE_HOST}|ORACLE_PORT=${ORACLE_PORT}|ORACLE_SERVICE=${ORACLE_SERVICE}|ORACLE_SCHEMA=${ORACLE_SCHEMA}|ORACLE_USER=${ORACLE_USER}|IA_SENHA_MESTRA=${IA_SENHA_MESTRA}"
+            --set-env-vars="^|^PROJECT_ID=${PROJECT_ID}|ENV=hml|LOG_LEVEL=INFO|DB_IAM_AUTH=true|POSTGRES_DSN=${POSTGRES_DSN}|ORACLE_HOST=${ORACLE_HOST}|ORACLE_PORT=${ORACLE_PORT}|ORACLE_SERVICE=${ORACLE_SERVICE}|ORACLE_SCHEMA=${ORACLE_SCHEMA}|ORACLE_USER=${ORACLE_USER}|IA_SENHA_MESTRA=${IA_SENHA_MESTRA}|REGION=${REGION}|IMPORT_JOB=${IMPORT_JOB}"
+
+      # Job da importacao. Mesma subnet do servico: a VPN so aceita origem na
+      # atlas-psc-subnet. --max-retries=0: uma importacao que falhou nao recomeca
+      # sozinha -- a tela mostra o erro e quem retoma e o usuario ("pular
+      # existentes"). Os args do job sao so o script; os de cada execucao vem do
+      # override que o servico manda. A credencial do Oracle sai do cadastro de
+      # Setup > Servidores (perfil GCP); o ORACLE_PASSWORD fica para perfil com
+      # fonte "variavel". A SA de runtime precisa de roles/run.developer neste job
+      # para dispara-lo e cancela-lo (docs/gcp-setup.md, secao 10).
+      - name: Deploy Cloud Run Job (importacao)
+        run: |
+          set -euo pipefail
+          gcloud run jobs deploy "${IMPORT_JOB}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --image="${IMAGE_TAG}" \
+            --service-account="${RUNTIME_SERVICE_ACCOUNT}" \
+            --command=python \
+            --args=scripts/mapear_oracle.py \
+            --tasks=1 \
+            --max-retries=0 \
+            --task-timeout=24h \
+            --cpu=1 \
+            --memory=2Gi \
+            --network="${VPC_NETWORK}" \
+            --subnet="${VPC_SUBNET}" \
+            --vpc-egress=private-ranges-only \
+            --set-secrets="ORACLE_PASSWORD=atlas-iw-oracle-ds-iw-password:latest" \
+            --set-env-vars="^|^PROJECT_ID=${PROJECT_ID}|ENV=hml|LOG_LEVEL=INFO|DB_IAM_AUTH=true|POSTGRES_DSN=${POSTGRES_DSN}"
 
       - name: Print URL
         run: |

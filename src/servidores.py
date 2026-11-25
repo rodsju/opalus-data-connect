@@ -66,8 +66,9 @@ class ConfiguracaoInvalida(provedores.ConfiguracaoInvalida):
 
 
 def no_cloud_run():
-    # K_SERVICE e definida pelo proprio Cloud Run em todo container
-    return bool(os.getenv("K_SERVICE"))
+    # O Cloud Run define K_SERVICE no container de servico e CLOUD_RUN_JOB no de
+    # job. Sem o segundo, a importacao (Cloud Run Job) usaria o perfil Local.
+    return bool(os.getenv("K_SERVICE") or os.getenv("CLOUD_RUN_JOB"))
 
 
 def projeto_gcp():

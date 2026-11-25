@@ -599,10 +599,113 @@ def coletar_amostra(cur, schema, nome, colunas, limite, ordem=None):
 # ---------------------------------------------------------------------------
 
 
-def conectar_pg(dsn):
-    import psycopg
+def _src():
+    """O pacote src do app, importado sob demanda.
 
-    return psycopg.connect(dsn)
+    So aqui o mapeador depende do app: login IAM no Cloud SQL e o cadastro de
+    servidores. As funcoes puras continuam testaveis sem ele.
+    """
+    if str(RAIZ) not in sys.path:
+        sys.path.insert(0, str(RAIZ))
+    import src.catalogo
+    import src.servidores
+
+    return src
+
+
+def conectar_pg(dsn):
+    """Pela mesma porta do app: com DB_IAM_AUTH (Cloud Run) o token da SA vai como
+    senha. Um psycopg.connect(dsn) puro falha no Cloud SQL, que nao tem senha."""
+    return _src().catalogo.conectar(dsn)
+
+
+def origem_do_cadastro(conexao, esquema_id):
+    """Servidor, schema e credencial de um esquema de Setup > Servidores.
+
+    A credencial vem do perfil do ambiente (servidores.credencial): GCP no Cloud
+    Run Job, Local na maquina. Levanta ValueError com a mensagem para o usuario.
+    """
+    linha = conexao.execute(
+        "SELECT e.nome, e.servidor_id FROM catalogo.esquema e WHERE e.id = %s",
+        (esquema_id,),
+    ).fetchone()
+    if not linha:
+        raise ValueError(f"schema {esquema_id} nao existe no cadastro de servidores")
+    schema, servidor_id = linha
+
+    servidores = _src().servidores
+    servidor = servidores.buscar(servidor_id)
+    if servidor["tipo"] != "oracle":
+        raise ValueError(f"o mapeador so conhece Oracle; o servidor e {servidor['tipo']}")
+    try:
+        usuario, senha = servidores.credencial(servidor)
+    except servidores.ConfiguracaoInvalida as erro:
+        raise ValueError(f"{erro.motivo}. {erro.detalhe}".strip()) from erro
+    return {
+        "host": servidor["host"],
+        "porta": str(servidor["porta"]),
+        "service": servidor["base"],
+        "schema": schema.upper(),
+        "usuario": usuario,
+        "senha": senha,
+    }
+
+
+class Progresso:
+    """Linha de catalogo.importacao da execucao disparada por Setup > Importar dados.
+
+    Sem --importacao (o make catalogo de sempre) todo metodo e no-op. As escritas
+    so valem enquanto a linha esta ativa: se a tela cancelou, avancar() devolve
+    False e o laco para -- o cancelamento e cooperativo, local e na nuvem.
+    """
+
+    ATIVA = "status IN ('pendente', 'rodando')"
+
+    def __init__(self, conexao, importacao_id):
+        self.conexao = conexao
+        self.id = importacao_id
+
+    def _escrever(self, sql, params):
+        if not self.id:
+            return True
+        cur = self.conexao.execute(f"{sql} WHERE id = %s AND {self.ATIVA}", (*params, self.id))
+        self.conexao.commit()
+        return cur.rowcount > 0
+
+    def iniciar(self, total):
+        return self._escrever(
+            "UPDATE catalogo.importacao SET status = 'rodando', iniciada_em = "
+            "coalesce(iniciada_em, now()), heartbeat_em = now(), total = %s",
+            (total,),
+        )
+
+    def avancar(self, processados, nome):
+        return self._escrever(
+            "UPDATE catalogo.importacao SET processados = %s, objeto_atual = %s, "
+            "heartbeat_em = now()",
+            (processados, nome),
+        )
+
+    def fechar(self, status, erros):
+        from psycopg.types.json import Json
+
+        return self._escrever(
+            "UPDATE catalogo.importacao SET status = %s, erros = %s, concluida_em = now(), "
+            "heartbeat_em = now(), objeto_atual = NULL",
+            (status, Json(erros)),
+        )
+
+
+class ColetorDeErros(logging.Handler):
+    """Guarda as mensagens de ERROR: e com elas que uma importacao que parou numa
+    validacao (return 1 antes do laco) explica na tela por que falhou."""
+
+    def __init__(self):
+        super().__init__(level=logging.ERROR)
+        self.mensagens = []
+
+    def emit(self, record):
+        self.mensagens.append(record.getMessage())
 
 
 def aplicar_ddl(conexao):
@@ -1018,7 +1121,7 @@ def conferir_rede(host, porta, segundos=5):
         conexao.close()
 
 
-def montar_argumentos():
+def montar_argumentos(argv=None):
     p = argparse.ArgumentParser(
         description="Mapeia um schema Oracle para o catalogo de dados no Postgres."
     )
@@ -1037,7 +1140,11 @@ def montar_argumentos():
                    help="mostra como o .env foi lido (sem a senha) e sai")
     p.add_argument("--somente-ddl", action="store_true",
                    help="aplica catalogo_schema.sql no Postgres e sai, sem tocar no Oracle")
-    return p.parse_args()
+    p.add_argument("--esquema-id", type=int,
+                   help="origem e credencial do cadastro de Setup > Servidores, em vez de ORACLE_*")
+    p.add_argument("--importacao", type=int,
+                   help="linha de catalogo.importacao que recebe o progresso (Setup > Importar dados)")
+    return p.parse_args(argv)
 
 
 def main():
@@ -1066,40 +1173,85 @@ def main():
         logger.info("schema aplicado em %s", ARQUIVO_DDL.name)
         return 0
 
-    host = os.getenv("ORACLE_HOST")
-    porta = os.getenv("ORACLE_PORT", "1521")
-    service = os.getenv("ORACLE_SERVICE")
-    usuario = os.getenv("ORACLE_USER")
-    senha = os.getenv("ORACLE_PASSWORD")
-    dsn_pg = os.getenv("POSTGRES_DSN")
-    faltando = [
-        nome
-        for nome, valor in (
-            ("ORACLE_HOST", host), ("ORACLE_SERVICE", service), ("ORACLE_USER", usuario),
-            ("ORACLE_PASSWORD", senha), ("POSTGRES_DSN", dsn_pg), ("--schema", args.schema),
-        )
-        if not valor
-    ]
-    if faltando:
-        logger.error("faltou definir: %s. Copie .env.example para .env e preencha.",
-                     ", ".join(faltando))
-        return 1
+    if not args.importacao:
+        return mapear(args)
 
+    # Disparada por Setup > Importar dados: o que quer que aconteca, a linha da
+    # importacao tem de fechar -- senao a tela mostraria "rodando" para sempre.
+    coletor = ColetorDeErros()
+    logging.getLogger().addHandler(coletor)
+    try:
+        codigo = mapear(args)
+    except BaseException as erro:
+        logger.exception("importacao %s interrompida", args.importacao)
+        coletor.mensagens.append(f"{type(erro).__name__}: {erro}")
+        codigo = 1
+    if codigo != 0:
+        # No-op se mapear() ja fechou (ou se a tela cancelou): fechar() so escreve
+        # em linha ainda ativa.
+        try:
+            pg = conectar_pg(os.getenv("POSTGRES_DSN"))
+            Progresso(pg, args.importacao).fechar("falhou", coletor.mensagens[-20:] or [
+                "o mapeador saiu com erro sem mensagem; veja o log da execucao"])
+            pg.close()
+        except Exception:  # noqa: BLE001
+            logger.exception("nao consegui fechar a importacao %s", args.importacao)
+    return codigo
+
+
+def mapear(args):
+    dsn_pg = os.getenv("POSTGRES_DSN")
     if args.somente_amostras and args.amostra <= 0:
         logger.error("--somente-amostras com --amostra 0 so apagaria as amostras. "
                      "Se e isso que voce quer, faca pelo SQL.")
         return 1
 
-    schema = args.schema.upper()
+    if args.esquema_id:
+        # Origem e credencial do cadastro de Setup > Servidores
+        if not dsn_pg:
+            logger.error("faltou definir: POSTGRES_DSN")
+            return 1
+        pg = conectar_pg(dsn_pg)
+        aplicar_ddl(pg)
+        try:
+            origem = origem_do_cadastro(pg, args.esquema_id)
+        except ValueError as erro:
+            logger.error("%s", erro)
+            return 1
+        host, porta, service = origem["host"], origem["porta"], origem["service"]
+        usuario, senha, schema = origem["usuario"], origem["senha"], origem["schema"]
+        esquema_id = args.esquema_id
+    else:
+        host = os.getenv("ORACLE_HOST")
+        porta = os.getenv("ORACLE_PORT", "1521")
+        service = os.getenv("ORACLE_SERVICE")
+        usuario = os.getenv("ORACLE_USER")
+        senha = os.getenv("ORACLE_PASSWORD")
+        faltando = [
+            nome
+            for nome, valor in (
+                ("ORACLE_HOST", host), ("ORACLE_SERVICE", service), ("ORACLE_USER", usuario),
+                ("ORACLE_PASSWORD", senha), ("POSTGRES_DSN", dsn_pg), ("--schema", args.schema),
+            )
+            if not valor
+        ]
+        if faltando:
+            logger.error("faltou definir: %s. Copie .env.example para .env e preencha.",
+                         ", ".join(faltando))
+            return 1
+        schema = args.schema.upper()
+        pg = conectar_pg(dsn_pg)
+        aplicar_ddl(pg)
+        esquema_id = garantir_esquema(pg, "oracle", host, porta, service, schema)
 
-    pg = conectar_pg(dsn_pg)
-    aplicar_ddl(pg)
-    esquema_id = garantir_esquema(pg, "oracle", host, porta, service, schema)
+    progresso = Progresso(pg, args.importacao)
     abrir_extracao(pg, schema, host, service, {
         "amostra": args.amostra, "somente_amostras": args.somente_amostras,
         "contagem_exata": args.contagem_exata, "tabelas": args.tabelas,
         "limite": args.limite, "sem_views": args.sem_views,
     })
+    # Ja marca "rodando": ler o dicionario leva minutos antes do primeiro objeto
+    progresso.iniciar(None)
 
     erros_globais = []
     status_final = "concluida"
@@ -1150,9 +1302,14 @@ def main():
         ja_gravados = nomes_ja_gravados(pg, esquema_id) if args.pular_existentes else set()
         logger.info("%d objetos a processar (%d tabelas, %d views)",
                     len(alvos), len(tabelas), len(views))
+        cancelada = not progresso.iniciar(len(alvos))
 
         vistos = []
         for indice, (nome, tipo) in enumerate(alvos, start=1):
+            if cancelada or not progresso.avancar(indice - 1, nome):
+                cancelada = True
+                logger.warning("importacao %s cancelada pela tela em %s", args.importacao, nome)
+                break
             vistos.append(nome)
             if nome in ja_gravados:
                 logger.info("[%d/%d] %s  ja gravado, pulando", indice, len(alvos), nome)
@@ -1255,8 +1412,9 @@ def main():
         # sumir do catalogo; com filtro o "nao visto" nao significa nada. E
         # --somente-amostras nem olha estrutura: deixar passar aqui apagaria
         # objeto em cascata, levando junto descricao_ia e embedding.
+        # Cancelada no meio, a varredura tambem nao e completa.
         if not args.tabelas and not args.limite and not args.sem_views \
-                and not args.somente_amostras:
+                and not args.somente_amostras and not cancelada:
             apagados = remover_sumidos(pg, esquema_id, vistos)
             if apagados:
                 logger.info("removidos do catalogo (nao existem mais no schema): %s",
@@ -1272,11 +1430,18 @@ def main():
         status_final = "falhou"
         erros_globais.append(str(erro))
         logger.exception("execucao interrompida")
+        pg.rollback()
         fechar_extracao(pg, status_final, erros_globais)
+        progresso.fechar("falhou", erros_globais[-20:])
         pg.close()
         return 1
 
+    if cancelada:
+        status_final = "cancelada"
     fechar_extracao(pg, status_final, erros_globais)
+    if not cancelada:
+        progresso.avancar(len(alvos), None)
+        progresso.fechar("concluida", erros_globais[-20:])
     pg.close()
     logger.info("catalogo atualizado. Comece por: SELECT * FROM catalogo.vw_resumo;")
     return 0

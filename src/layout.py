@@ -55,6 +55,7 @@ MENU = [
         "titulo": "Setup",
         "itens": [
             {"href": "/setup/servidores", "icone": "server", "rotulo": "Servidores"},
+            {"href": "/setup/importar", "icone": "database-zap", "rotulo": "Importar dados"},
             {"href": "/setup/provedores", "icone": "bot", "rotulo": "AI Providers"},
             {"href": "/setup/lote", "icone": "layers", "rotulo": "Lote de descrições"},
             # Mesma pagina, outra tarefa. O ativo do menu casa por href exato, entao

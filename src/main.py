@@ -19,11 +19,13 @@ from . import esquemas as esquemas_mod
 from . import grafo as grafo_mod
 from . import health as health_view
 from . import home as home_view
+from . import importacao as importacao_mod
 from . import ia as ia_view
 from . import oracle as oracle_view
 from . import provedores as provedores_mod
 from . import servidores as servidores_mod
 from . import setup as setup_view
+from . import setup_importar as setup_importar_view
 from . import setup_lote as setup_lote_view
 from . import setup_servidores as setup_servidores_view
 from . import usuario as usuario_mod
@@ -649,6 +651,102 @@ def setup_lote_cancelar(request: Request, lote_id: int):
         )
         return HTMLResponse(content=html, status_code=502)
     return RedirectResponse(url=f"/setup/lote/{lote_id}", status_code=303)
+
+
+# --------------------------------------------------------------------------
+# Setup > Importar dados
+# --------------------------------------------------------------------------
+
+IMPORTAR = "/setup/importar"
+
+
+def _esquema_do_form(dados):
+    try:
+        return int(dados.get("esquema_id") or "")
+    except ValueError as e:
+        raise importacao_mod.ImportacaoInvalida("Escolha o schema") from e
+
+
+@app.get(IMPORTAR)
+def setup_importar(request: Request):
+    return _html(setup_importar_view.gerar_form(usuario_mod.identificar(request)))
+
+
+@app.post(IMPORTAR)
+async def setup_importar_criar(request: Request):
+    """Cria a linha da importacao e dispara o job (ou o processo local)."""
+    usuario = usuario_mod.identificar(request)
+    dados = await request.form()
+    try:
+        esquema_id = _esquema_do_form(dados)
+        modo, parametros = importacao_mod.parametros_do_form(dados)
+        importacao_id = importacao_mod.criar(
+            esquema_id, modo, parametros, usuario["email"] if usuario else None
+        )
+        importacao_mod.disparar(importacao_id)
+    except (importacao_mod.ImportacaoInvalida, catalogo_mod.ConsultaFalhou) as falha:
+        html, _ = setup_importar_view.gerar_form(
+            usuario, aviso=_aviso_de(falha), valores=dict(dados)
+        )
+        return HTMLResponse(content=html, status_code=400)
+    return RedirectResponse(url=f"{IMPORTAR}/{importacao_id}", status_code=303)
+
+
+@app.post(f"{IMPORTAR}/testar")
+async def setup_importar_testar(request: Request):
+    """Conexao com o servidor do schema, no perfil deste ambiente (make catalogo_env)."""
+    usuario = usuario_mod.identificar(request)
+    dados = await request.form()
+    try:
+        ok, mensagem, ms = importacao_mod.testar_conexao(_esquema_do_form(dados))
+    except (importacao_mod.ImportacaoInvalida, provedores_mod.ConfiguracaoInvalida,
+            catalogo_mod.ConsultaFalhou) as falha:
+        ok, mensagem, ms = False, _aviso_de(falha)["motivo"], None
+    resultado = {"motivo": "Conexão OK" if ok else "Conexão falhou",
+                 "detalhe": mensagem + (f" ({ms:.0f} ms)" if ms is not None else "")}
+    html, _ = setup_importar_view.gerar_form(
+        usuario, valores=dict(dados),
+        **({"sucesso": resultado} if ok else {"aviso": resultado}),
+    )
+    return HTMLResponse(content=html, status_code=200 if ok else 502)
+
+
+@app.post(f"{IMPORTAR}/ddl")
+async def setup_importar_ddl(request: Request):
+    """Reaplica scripts/catalogo_schema.sql (make schema), sem tocar na origem."""
+    usuario = usuario_mod.identificar(request)
+    dados = await request.form()
+    ok, detalhe = importacao_mod.aplicar_ddl()
+    resultado = {"motivo": "DDL aplicado" if ok else "DDL não aplicado", "detalhe": detalhe}
+    html, _ = setup_importar_view.gerar_form(
+        usuario, valores=dict(dados),
+        **({"sucesso": resultado} if ok else {"aviso": resultado}),
+    )
+    return HTMLResponse(content=html, status_code=200 if ok else 502)
+
+
+@app.get(IMPORTAR + "/{importacao_id}")
+def setup_importar_progresso(request: Request, importacao_id: int):
+    """Acompanhamento; recarrega sozinha enquanto a importacao roda."""
+    html, status = setup_importar_view.gerar_progresso(
+        importacao_id, usuario_mod.identificar(request)
+    )
+    if html is None:
+        raise HTTPException(status_code=404, detail=f"importacao desconhecida: {importacao_id}")
+    return HTMLResponse(content=html, status_code=status)
+
+
+@app.post(IMPORTAR + "/{importacao_id}/cancelar")
+def setup_importar_cancelar(request: Request, importacao_id: int):
+    usuario = usuario_mod.identificar(request)
+    try:
+        importacao_mod.cancelar(importacao_id, usuario["email"] if usuario else None)
+    except catalogo_mod.ConsultaFalhou as falha:
+        html, _ = setup_importar_view.gerar_progresso(
+            importacao_id, usuario, aviso=_aviso_de(falha)
+        )
+        return HTMLResponse(content=html, status_code=502)
+    return RedirectResponse(url=f"{IMPORTAR}/{importacao_id}", status_code=303)
 
 
 # --------------------------------------------------------------------------

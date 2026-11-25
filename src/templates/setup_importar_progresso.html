@@ -1,0 +1,57 @@
+{# Progresso de uma importacao. Recarrega sozinha enquanto roda. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, kpis, painel, tabela_itens %}
+
+{% block miolo %}
+{% if recarregar %}<meta http-equiv="refresh" content="10">{% endif %}
+
+{% if aviso %}
+  {% call alerta(tone='danger', icone='alert-circle') %}
+  <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+{{ kpis([
+  {'rotulo': 'Situação', 'valor': imp.status,
+   'hint': ('atualizando a cada 10s' if recarregar else '')},
+  {'rotulo': 'Processados', 'valor': imp.processados | fmt,
+   'hint': (percentual ~ '% de ' ~ (imp.total | fmt)) if imp.total is not none else 'lendo o dicionário'},
+  {'rotulo': 'Objeto atual', 'valor': imp.objeto_atual or '—', 'hint': ''},
+  {'rotulo': 'Último sinal', 'valor': (imp.heartbeat_em | fmt) if imp.heartbeat_em else '—',
+   'hint': 'aguardando a execução subir' if imp.status == 'pendente' else ''},
+]) }}
+
+{% call painel('Progresso', percentual ~ '%') %}
+  <div class="ds-progresso"><div class="ds-progresso__barra"
+       style="width: {{ percentual }}%"></div></div>
+  <p class="ds-ia-meta">
+    Solicitada em {{ imp.solicitada_em | fmt }}{% if imp.solicitada_por %} por {{ imp.solicitada_por }}{% endif %}
+    {% if imp.iniciada_em %} · iniciada em {{ imp.iniciada_em | fmt }}{% endif %}
+    {% if imp.concluida_em %} · terminada em {{ imp.concluida_em | fmt }}{% endif %}
+  </p>
+
+  {% if ativa %}
+  <form method="post" action="/setup/importar/{{ imp.id }}/cancelar"
+        onsubmit="return confirm('Cancelar a importação? O que já foi gravado fica.')">
+    <button class="ds-btn ds-btn--perigo" type="submit">
+      <i data-lucide="square" style="width:16px;height:16px;"></i>Cancelar
+    </button>
+  </form>
+  {% elif imp.status in ('falhou', 'cancelada') %}
+  <p class="ds-nota">Para continuar de onde parou, dispare de novo em
+    <a href="/setup/importar">Importar dados</a> com “Pular existentes”.</p>
+  {% endif %}
+{% endcall %}
+
+{% if imp.erros %}
+{% call painel('Avisos e erros', imp.erros | length ~ '') %}
+  <ul class="ds-lista-erros">
+    {% for erro in imp.erros %}<li class="mono">{{ erro }}</li>{% endfor %}
+  </ul>
+{% endcall %}
+{% endif %}
+
+{% call painel('Parâmetros') %}
+  {{ tabela_itens(parametros + [('execução', imp.execucao or '—')], ['Parâmetro', 'Valor'], mono=true) }}
+{% endcall %}
+{% endblock %}

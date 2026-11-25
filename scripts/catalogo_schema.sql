@@ -627,3 +627,40 @@ CREATE INDEX IF NOT EXISTS relacionamento_esquema_origem_idx
     ON catalogo.relacionamento (esquema_id, origem_tabela);
 CREATE INDEX IF NOT EXISTS relacionamento_esquema_destino_idx
     ON catalogo.relacionamento (esquema_id, destino_tabela);
+
+-- ---------------------------------------------------------------------------
+-- Importacao disparada por Setup > Importar dados
+--
+-- Cada execucao do mapeador (scripts/mapear_oracle.py --importacao N) disparada
+-- pela tela vira uma linha: na nuvem ele roda num Cloud Run Job, no local num
+-- processo destacado, e e por esta linha que a tela acompanha o progresso.
+-- catalogo.extracao continua sendo a foto da ULTIMA extracao (health e visao
+-- geral a leem); aqui fica o historico.
+--
+-- heartbeat_em e atualizado a cada objeto: rodando sem batimento ha mais de
+-- alguns minutos e execucao que morreu sem fechar (src/importacao.py).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalogo.importacao (
+  id             bigserial PRIMARY KEY,
+  esquema_id     bigint NOT NULL REFERENCES catalogo.esquema(id) ON DELETE CASCADE,
+  modo           text NOT NULL CHECK (modo IN ('completo', 'amostras')),
+  parametros     jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status         text NOT NULL DEFAULT 'pendente'
+                      CHECK (status IN ('pendente', 'rodando', 'concluida', 'falhou', 'cancelada')),
+  solicitada_por text,
+  solicitada_em  timestamptz NOT NULL DEFAULT now(),
+  iniciada_em    timestamptz,
+  heartbeat_em   timestamptz,
+  concluida_em   timestamptz,
+  total          int,
+  processados    int NOT NULL DEFAULT 0,
+  objeto_atual   text,
+  erros          jsonb NOT NULL DEFAULT '[]'::jsonb,
+  -- Nome da execucao do Cloud Run (projects/.../executions/...) ou "pid:N" no local
+  execucao       text
+);
+
+-- Uma importacao ativa por vez: duas escrevendo no mesmo catalogo se atropelariam
+CREATE UNIQUE INDEX IF NOT EXISTS importacao_uma_ativa_idx
+    ON catalogo.importacao ((true)) WHERE status IN ('pendente', 'rodando');

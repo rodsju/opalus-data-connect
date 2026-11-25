@@ -67,8 +67,16 @@ def test_campos_obrigatorios_e_dominios():
 
 def test_perfil_em_uso_segue_o_ambiente(monkeypatch):
     monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.delenv("CLOUD_RUN_JOB", raising=False)
     assert servidores.perfil_atual() == "local"
     monkeypatch.setenv("K_SERVICE", "atlas-connect")
+    assert servidores.perfil_atual() == "gcp"
+
+
+def test_cloud_run_job_usa_o_perfil_gcp(monkeypatch):
+    # O job de importacao nao tem K_SERVICE, so CLOUD_RUN_JOB
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.setenv("CLOUD_RUN_JOB", "atlas-connect-import")
     assert servidores.perfil_atual() == "gcp"
 
 

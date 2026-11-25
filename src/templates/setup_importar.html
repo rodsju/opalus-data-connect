@@ -1,0 +1,167 @@
+{# Disparo da importacao do schema de origem e historico. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, painel %}
+
+{% set v = valores %}
+
+{% block miolo %}
+{% if aviso %}
+  {% call alerta(tone='danger', icone='alert-circle') %}
+  <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+{% if sucesso %}
+  {% call alerta(tone='success') %}
+  <strong>{{ sucesso.motivo }}.</strong>{% if sucesso.detalhe %} {{ sucesso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+{% if not pronto %}
+  {% call alerta(tone='warning') %}{{ motivo }}{% endcall %}
+{% endif %}
+
+{% if aberta %}
+  {% call alerta(tone='warning') %}
+  A importação <a href="/setup/importar/{{ aberta.id }}">#{{ aberta.id }}</a>
+  ({{ aberta.esquema }}) ainda está em andamento. Espere terminar ou cancele antes de abrir outra.
+  {% endcall %}
+{% endif %}
+
+<form class="ds-form" method="post" action="/setup/importar" id="form-importar"
+      onsubmit="return confirmarImportacao(this)">
+  {% call painel('Origem', onde) %}
+  {% if origens %}
+  <label class="ds-campo">
+    <span>Schema</span>
+    <select name="esquema_id" required>
+      {% for e in origens %}
+      <option value="{{ e.id }}"{% if v.esquema_id|string == e.id|string %} selected{% endif %}>
+        {{ e.servidor }} · {{ e.nome }}</option>
+      {% endfor %}
+    </select>
+    <small>Servidor e credencial vêm de <a href="/setup/servidores">Setup › Servidores</a>,
+      no perfil deste ambiente.</small>
+  </label>
+  {% else %}
+    {% call alerta(tone='info') %}
+    Nenhum schema Oracle cadastrado. Cadastre o servidor e o schema em
+    <a href="/setup/servidores">Setup › Servidores</a>.
+    {% endcall %}
+  {% endif %}
+
+  <div class="ds-form__acoes">
+    <button class="ds-btn" type="submit" formaction="/setup/importar/testar"
+            formnovalidate{% if not origens %} disabled{% endif %}>
+      <i data-lucide="plug" style="width:16px;height:16px;"></i>Testar conexão
+    </button>
+    <button class="ds-btn" type="submit" formaction="/setup/importar/ddl"
+            formnovalidate>
+      <i data-lucide="database" style="width:16px;height:16px;"></i>Aplicar DDL do catálogo
+    </button>
+  </div>
+  <p class="ds-nota">Os dois rodam na hora, sem job. O DDL é o mesmo que o app aplica no boot
+    (<span class="mono">make schema</span>).</p>
+  {% endcall %}
+
+  {% call painel('O que importar') %}
+  {% for valor, rotulo in modos.items() %}
+  <label class="ds-busca__opcao">
+    <input type="radio" name="modo" value="{{ valor }}"
+           {% if (v.modo or 'completo') == valor %}checked{% endif %}>
+    <strong>{{ rotulo }}</strong>
+    {% if valor == 'completo' %}
+    <small>— estrutura, contagens e amostras (<span class="mono">make catalogo</span>)</small>
+    {% else %}
+    <small>— refaz só as amostras; não toca em estrutura nem em IA (<span class="mono">make amostras</span>)</small>
+    {% endif %}
+  </label>
+  {% endfor %}
+
+  {% call alerta(tone='info') %}
+  O mapeamento completo atualiza a data de cada objeto, e as descrições de IA geradas antes
+  passam a aparecer como desatualizadas. Para renovar só as amostras, use “Só amostras”.
+  {% endcall %}
+  {% endcall %}
+
+  {% call painel('Recorte e opções') %}
+  <label class="ds-campo">
+    <span>Tabelas</span>
+    <input type="text" name="tabelas" value="{{ v.tabelas or '' }}" placeholder="CAP%, GLB%">
+    <small>Filtro por nome, com o curinga do SQL. Em branco, o schema inteiro.</small>
+  </label>
+  <label class="ds-campo">
+    <span>Limite de objetos</span>
+    <input type="number" name="limite" min="1" value="{{ v.limite or '' }}" placeholder="todos">
+    <small>Só os N primeiros: bom para um teste rápido (3).</small>
+  </label>
+  <label class="ds-campo">
+    <span>Linhas de amostra</span>
+    <input type="number" name="amostra" min="0" max="1000" value="{{ v.amostra if v.amostra is not none and v.amostra != '' else 100 }}">
+    <small>Por objeto. 0 desliga a amostra (só no completo).</small>
+  </label>
+  <label class="ds-campo">
+    <span>Timeout por query (s)</span>
+    <input type="number" name="timeout" min="5" max="{{ timeout_maximo }}" value="{{ v.timeout or 60 }}">
+  </label>
+  <label class="ds-busca__opcao">
+    <input type="checkbox" name="contagem_exata" value="1"{% if v.contagem_exata %} checked{% endif %}>
+    Contagem exata <small>— COUNT(*) em vez das estatísticas do Oracle; bem mais lento</small>
+  </label>
+  <label class="ds-busca__opcao">
+    <input type="checkbox" name="sem_views" value="1"{% if v.sem_views %} checked{% endif %}>
+    Sem views
+  </label>
+  <label class="ds-busca__opcao">
+    <input type="checkbox" name="pular_existentes" value="1"{% if v.pular_existentes %} checked{% endif %}>
+    Pular existentes <small>— retoma uma importação que parou, sem refazer o que já foi gravado</small>
+  </label>
+  <p class="ds-nota">Objetos que sumiram da origem só saem do catálogo num mapeamento
+    completo sem filtro, sem limite e com views.</p>
+  {% endcall %}
+
+  {% if pronto and origens and not aberta %}
+  <button class="ds-btn" type="submit">
+    <i data-lucide="play" style="width:16px;height:16px;"></i>Disparar importação
+  </button>
+  {% endif %}
+</form>
+
+{% if recentes %}
+{% call painel('Importações recentes') %}
+  <div class="ds-table-wrap">
+    <table class="ds-table">
+      <thead><tr><th>#</th><th>Modo</th><th>Schema</th><th>Situação</th>
+                 <th class="num">Progresso</th><th>Solicitada</th><th>Por</th></tr></thead>
+      <tbody>
+        {% for r in recentes %}
+        <tr>
+          <td><a href="/setup/importar/{{ r.id }}">#{{ r.id }}</a></td>
+          <td>{{ modos.get(r.modo, r.modo) }}</td>
+          <td>{{ r.servidor }} · {{ r.esquema }}</td>
+          <td>{{ r.status }}</td>
+          <td class="num">{{ r.processados | fmt }}/{{ r.total | fmt if r.total is not none else '?' }}</td>
+          <td>{{ r.solicitada_em | fmt }}</td>
+          <td>{{ r.solicitada_por or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endcall %}
+{% endif %}
+
+<script>
+function confirmarImportacao(form) {
+  // Testar e Aplicar DDL usam formaction e nao precisam de confirmacao
+  const botao = document.activeElement;
+  if (botao && botao.getAttribute('formaction')) return true;
+  const modo = form.querySelector('input[name="modo"]:checked').value;
+  const limite = form.querySelector('input[name="limite"]').value;
+  const tabelas = form.querySelector('input[name="tabelas"]').value;
+  if (modo !== 'completo' || limite || tabelas) return true;
+  return confirm('Mapeamento completo do schema inteiro: leva horas e marca as descrições ' +
+                 'de IA como desatualizadas. Confirma?');
+}
+</script>
+{% endblock %}

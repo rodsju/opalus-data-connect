@@ -355,12 +355,11 @@ bloqueada por tentativas erradas do app, **a replicação para junto**. Se isso
 incomodar, peça ao DBA um usuário próprio, só de leitura, e troque `ORACLE_USER` e o
 secret no workflow.
 
-**O que roda pela VPN.** No web app, o Oracle ao vivo só aparece no `/health` (check
-"Origem (Oracle)"). As páginas leem o catálogo do Postgres. O mapeador
-(`scripts/mapear_oracle.py`, `make catalogo`) é um script de linha de comando e
-nenhuma rota o dispara. Para rodá-lo na nuvem, o próximo passo é um Cloud Run Job
-com a mesma imagem, VPC e secrets. Até lá, ele roda local e a nuvem recebe o
-resultado pelo passo 5.3.
+**O que roda pela VPN.** No web app, o Oracle ao vivo aparece no `/health` (check
+"Origem (Oracle)") e no "Testar conexão" das telas de Setup. As páginas leem o
+catálogo do Postgres. O mapeador (`scripts/mapear_oracle.py`) roda na nuvem pelo
+Cloud Run Job de **Setup › Importar dados** (seção 10); no local continua o
+`make catalogo`.
 
 **Criptografia nativa (NNE).** O modo thin só fala com o Oracle enquanto a
 criptografia nativa (`SQLNET.ENCRYPTION_SERVER`) **não for obrigatória** (`REQUIRED`).
@@ -433,9 +432,84 @@ no Cloud Run, use **Testar perfil GCP**.
 3. **Cadastro e teste.** Preencha o perfil GCP com a fonte Secret Manager e use
    **Testar perfil GCP** no app do Cloud Run.
 
-**Ainda não usam o cadastro:** o mapeador (`scripts/mapear_oracle.py`) e o check
-"Origem (Oracle)" do `/health` continuam lendo `ORACLE_*` do ambiente. O teste de
-conexão da tela só conhece Oracle.
+**Quem usa o cadastro:** a importação de Setup › Importar dados (seção 10) tira
+servidor, schema e credencial daqui. **Ainda não usam:** o `make catalogo` local e o
+check "Origem (Oracle)" do `/health`, que leem `ORACLE_*` do ambiente. O teste de
+conexão e o mapeador só conhecem Oracle.
+
+## 10. Importar dados (Cloud Run Job)
+
+**Setup › Importar dados** (`/setup/importar`) dispara o mapeador na nuvem, com as
+opções do Makefile:
+
+| Na tela | Equivale a | Onde roda |
+|---|---|---|
+| Mapeamento completo | `make catalogo` | Cloud Run Job `atlas-connect-import` |
+| Só amostras | `make amostras` | Cloud Run Job `atlas-connect-import` |
+| Testar conexão | `make catalogo_env` | na hora, no serviço |
+| Aplicar DDL do catálogo | `make schema` | na hora, no serviço |
+
+O schema vem do cadastro de Setup › Servidores (seção 9), e a credencial vem do
+perfil **GCP** do servidor. O job não tem `K_SERVICE`, só `CLOUD_RUN_JOB`, e
+`servidores.no_cloud_run()` aceita as duas variáveis.
+
+**Como funciona.** O workflow faz o deploy do job com a mesma imagem, SA, subnet
+(`atlas-psc-subnet`, por causa da VPN) e secrets do serviço. O comando do job é
+`python scripts/mapear_oracle.py`. A tela grava uma linha em
+`catalogo.importacao` e chama a API do Cloud Run (`jobs/atlas-connect-import:run`)
+com override dos args (`--importacao N --esquema-id N ...`). O mapeador atualiza a
+linha a cada objeto (`processados`, `objeto_atual`, `heartbeat_em`), e a página
+de progresso se recarrega a cada 10 s.
+
+- **Uma importação por vez.** Um índice único parcial impede duas ativas ao mesmo tempo.
+- **Cancelar** marca a linha como cancelada. O mapeador para no próximo objeto, e a
+  execução também recebe o cancel do Cloud Run.
+- **Sem sinal por 20 min:** a linha vira `falhou`. Isso cobre execução derrubada
+  sem fechar. Para retomar, dispare de novo com "Pular existentes".
+- **`--max-retries=0`:** uma falha não recomeça sozinha.
+- **`--task-timeout=24h`:** o mapeamento completo leva horas.
+
+### 10.1 Permissões (uma vez, depois do primeiro deploy do job)
+
+O job só existe depois do primeiro deploy, então o binding vem depois dele. A SA de
+runtime dispara a execução **com override** e a cancela. Por isso o papel é
+`run.developer`, no job e não no projeto:
+
+```bash
+gcloud run jobs add-iam-policy-binding atlas-connect-import --project=$PROJECT \
+  --region=$REGION --member=serviceAccount:$SA --role=roles/run.developer --format=none
+```
+
+Sem esse binding, a tela mostra "Sem permissão para executar o job de importação"
+(HTTP 403), e a linha fica como `falhou` com essa mensagem.
+
+A SA de deploy precisa criar e atualizar jobs (`run.jobs.create` e
+`run.jobs.update`). O `roles/run.admin` e o `roles/run.developer` incluem as duas
+permissões. Confira antes do primeiro push:
+
+```bash
+gcloud projects get-iam-policy $PROJECT --flatten=bindings \
+  --filter="bindings.members:$DEPLOY_SA" --format='value(bindings.role)'
+```
+
+### 10.2 Conferir
+
+```bash
+gcloud run jobs describe atlas-connect-import --project=$PROJECT --region=$REGION \
+  --format='value(spec.template.spec.template.spec.containers[0].args)'
+gcloud run jobs executions list --job=atlas-connect-import --project=$PROJECT --region=$REGION
+gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="atlas-connect-import"' \
+  --project=$PROJECT --limit=50 --format='value(textPayload)'
+```
+
+Faça o primeiro teste com **Limite de objetos = 3**.
+
+**prd** não tem o job, porque não há VPN para o IW. Sem `IMPORT_JOB`, a tela mostra o
+aviso e não oferece o disparo.
+
+**O dump do passo 5.3** deixa de ser o caminho para levar o catálogo à nuvem. Ele
+continua útil para levar descrições e vetores de IA já gerados no local, que a
+importação não traz.
 
 ## Limitações
 
@@ -454,6 +528,7 @@ conexão da tela só conhece Oracle.
 | em `--set-env-vars` | `DB_IAM_AUTH=true` (o token da SA vai como senha, `src/catalogo.py`) |
 | em `--set-env-vars` (lista `^|^`) | `IA_SENHA_MESTRA` vinda do secret do GitHub (passo 3) |
 | em `--set-secrets` (só hml) | `ORACLE_PASSWORD=atlas-iw-oracle-ds-iw-password:latest` (seção 8) |
+| `IMPORT_JOB` / `REGION` (só hml) | `atlas-connect-import` / região do serviço: o Cloud Run Job de Setup › Importar dados (seção 10) |
 | `ORACLE_*` (só hml) | `192.168.30.4` / `1521` / `IWTST` / schema `DBIWGERIATRICS` / usuário `DS_IW` |
 | `VPC_NETWORK` / `VPC_SUBNET` | `atlas-vpc` / hml: `atlas-psc-subnet` (seletor da VPN, seção 8); prd: `atlas-services-subnet` |
 | `IMAGE` | `<região>-docker.pkg.dev/<projeto>/atlas-ar-apps/atlas-connect` |
