@@ -2,6 +2,7 @@
 import asyncio
 import contextlib
 import os
+import urllib.parse
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -12,6 +13,8 @@ from . import lote as lote_mod
 from . import log as log_mod
 from . import api as api_mod
 from . import catalogo as catalogo_mod
+from . import comparacao as comparacao_mod
+from . import comparar as comparar_view
 from . import config as config_mod
 from . import debug as debug_view
 from . import embeddings as embeddings_mod
@@ -72,9 +75,20 @@ async def esquema_do_request(request: Request, chamar):
 
 
 @app.get("/esquema")
-def trocar_esquema(id: int = Query(...), voltar: str = Query(default="/oracle")):
-    """Troca o schema em uso e volta para a pagina em que o usuario estava."""
-    resposta = RedirectResponse(url=esquemas_mod.destino_seguro(voltar), status_code=303)
+def trocar_esquema(
+    id: int = Query(...),
+    voltar: str = Query(default="/oracle"),
+    objeto: str = Query(default=""),
+):
+    """Troca o schema em uso e volta para a pagina em que o usuario estava.
+
+    `objeto` abre o detalhe dele no schema novo. O voltar nunca leva a um objeto
+    (destino_seguro); quem passa `objeto` -- a comparacao -- sabe que ele existe la.
+    """
+    destino = esquemas_mod.destino_seguro(voltar)
+    if objeto.strip():
+        destino = "/oracle/objetos/" + urllib.parse.quote(objeto.strip(), safe="")
+    resposta = RedirectResponse(url=destino, status_code=303)
     if any(e["id"] == id for e in esquemas_mod.lista_atual()):
         resposta.set_cookie(
             esquemas_mod.COOKIE, str(id), max_age=esquemas_mod.COOKIE_MAX_AGE,
@@ -216,6 +230,81 @@ def _filtros_da_lista(dados):
         for chave, param, _, _ in oracle_view.FILTROS
         if dados.get(param)
     }
+
+
+# --------------------------------------------------------------------------
+# Oracle > Comparar
+#
+# Antes de /oracle/{secao}: senao "comparar" cairia na rota generica como secao.
+# --------------------------------------------------------------------------
+
+
+@app.get("/oracle/comparar")
+def oracle_comparar(
+    request: Request,
+    nome: str = Query(default=""),
+    q: str = Query(default=""),
+):
+    """Seletor: mesma tabela entre schemas, busca livre e historico."""
+    selecionados = []
+    for valor in request.query_params.getlist("sel"):
+        try:
+            selecionados.append(int(valor))
+        except ValueError:
+            continue
+    html, status = comparar_view.gerar_selecao(
+        nome, q, selecionados, usuario_mod.identificar(request)
+    )
+    return HTMLResponse(content=html, status_code=status)
+
+
+@app.get("/oracle/comparar/ver")
+def oracle_comparar_ver(request: Request):
+    """Resultado. Aceita ?ids=1,2,3 (link do historico) ou ?sel=1&sel=2 (o form)."""
+    usuario = usuario_mod.identificar(request)
+    valores = request.query_params.getlist("ids") + request.query_params.getlist("sel")
+    try:
+        ids = comparacao_mod.ids_validos(valores)
+    except comparacao_mod.ComparacaoInvalida as falha:
+        html, _ = comparar_view.gerar_selecao(
+            selecionados=[int(v) for v in valores if v.isdigit()], usuario=usuario,
+            aviso=_aviso_de(falha),
+        )
+        return HTMLResponse(content=html, status_code=400)
+    html, status = comparar_view.gerar_resultado(ids, usuario)
+    return HTMLResponse(content=html, status_code=status)
+
+
+@app.post("/oracle/comparar/gerar")
+def oracle_comparar_gerar(
+    request: Request, ids: str = Form(default=""), provedor: str = Form(default="")
+):
+    """Gera a analise por IA, grava e volta. O 303 evita outra chamada paga no F5."""
+    usuario = usuario_mod.identificar(request)
+    try:
+        lista = comparacao_mod.ids_validos(ids)
+        objetos = comparacao_mod.carregar(lista)
+        analise, meta = comparacao_mod.gerar(
+            objetos, comparacao_mod.diferenca(objetos), provedor or None
+        )
+        comparacao_mod.gravar(objetos, analise, meta, usuario["email"] if usuario else None)
+    except (
+        comparacao_mod.ComparacaoInvalida,
+        ia_view.GeracaoFalhou,
+        provedores_mod.ConfiguracaoInvalida,
+        catalogo_mod.ConsultaFalhou,
+    ) as falha:
+        aviso = _aviso_de(falha)
+        try:
+            html, _ = comparar_view.gerar_resultado(
+                comparacao_mod.ids_validos(ids), usuario, aviso
+            )
+        except comparacao_mod.ComparacaoInvalida:
+            html, _ = comparar_view.gerar_selecao(usuario=usuario, aviso=aviso)
+        return HTMLResponse(content=html, status_code=502)
+    return RedirectResponse(
+        url=f"/oracle/comparar/ver?ids={','.join(str(i) for i in lista)}", status_code=303
+    )
 
 
 @app.get("/oracle/{secao}")

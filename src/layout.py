@@ -45,6 +45,7 @@ MENU = [
             {"href": "/oracle/grafo", "icone": "network", "rotulo": "Visão Grafo"},
             {"href": "/oracle/mapa", "icone": "orbit", "rotulo": "Mapa semântico"},
             {"href": "/oracle/busca", "icone": "search", "rotulo": "Busca semântica"},
+            {"href": "/oracle/comparar", "icone": "git-compare", "rotulo": "Comparar"},
             {"href": "/oracle/orfas", "icone": "unlink", "rotulo": "Órfãs"},
             {"href": "/oracle/amostras", "icone": "scan-search", "rotulo": "Amostras"},
             {"href": "/oracle/indices", "icone": "list-ordered", "rotulo": "Índices"},

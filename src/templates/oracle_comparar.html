@@ -1,0 +1,88 @@
+{# Selecao das tabelas da comparacao + historico das analises gravadas. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, painel %}
+
+{% block miolo %}
+{% if aviso %}
+  {% call alerta(tone='danger', icone='alert-circle') %}
+  <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+<form method="get" action="/oracle/comparar" id="form-comparar">
+  {% call painel('Escolher tabelas', minimo ~ ' a ' ~ maximo) %}
+  <div class="ds-lote-config">
+    <label class="ds-campo">
+      <span>Mesma tabela em todos os schemas</span>
+      <input type="text" name="nome" value="{{ nome }}" placeholder="CAPPAYMENT">
+      <small>Nome exato: lista os schemas que a têm, já marcados.</small>
+    </label>
+    <label class="ds-campo">
+      <span>Acrescentar outra tabela</span>
+      <input type="search" name="q" value="{{ termo }}" placeholder="PAYMENT">
+      <small>Parte do nome, em qualquer schema.</small>
+    </label>
+  </div>
+  <div class="ds-form__acoes">
+    <button class="ds-btn" type="submit">
+      <i data-lucide="search" style="width:16px;height:16px;"></i>Buscar
+    </button>
+  </div>
+
+  {% if nome_sem_resultado %}
+    {% call alerta(tone='info') %}
+    Nenhum objeto chamado <span class="mono">{{ nome | upper }}</span> no catálogo.
+    {% endcall %}
+  {% endif %}
+
+  {% if opcoes %}
+  <div class="ds-table-wrap">
+    <table class="ds-table">
+      <thead><tr><th></th><th>Objeto</th><th>Schema</th><th>Servidor</th>
+                 <th>Tipo</th><th class="num">Registros</th></tr></thead>
+      <tbody>
+        {% for o in opcoes %}
+        <tr>
+          {# name="sel": ao buscar de novo, o que ja estava marcado continua #}
+          <td><input type="checkbox" name="sel" value="{{ o.id }}"{% if o.marcado %} checked{% endif %}></td>
+          <td class="mono">{{ o.nome }}</td>
+          <td>{{ o.esquema }}</td>
+          <td>{{ o.servidor }}</td>
+          <td>{{ o.tipo }}</td>
+          <td class="num">{{ o.num_registros | fmt }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="ds-form__acoes">
+    <button class="ds-btn" type="submit" formaction="/oracle/comparar/ver">
+      <i data-lucide="git-compare" style="width:16px;height:16px;"></i>Comparar marcadas
+    </button>
+  </div>
+  {% endif %}
+  {% endcall %}
+</form>
+
+{% call painel('Comparações com análise gravada', historico | length ~ '') %}
+  {% if historico %}
+  <div class="ds-table-wrap">
+    <table class="ds-table">
+      <thead><tr><th>Tabelas</th><th>Modelo</th><th>Gerada em</th><th>Por</th></tr></thead>
+      <tbody>
+        {% for h in historico %}
+        <tr>
+          <td><a href="/oracle/comparar/ver?ids={{ h.objetos | join(',') }}">{{ h.rotulos | join(' × ') }}</a></td>
+          <td>{{ h.provedor }}/{{ h.modelo }}</td>
+          <td>{{ h.gerado_em | fmt }}</td>
+          <td>{{ h.gerado_por or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="ds-vazio">Nenhuma análise gravada ainda.</p>
+  {% endif %}
+{% endcall %}
+{% endblock %}

@@ -97,7 +97,7 @@
   </label>
   <label class="ds-campo">
     <span>Linhas de amostra</span>
-    <input type="number" name="amostra" min="0" max="1000" value="{{ v.amostra if v.amostra is not none and v.amostra != '' else 100 }}">
+    <input type="number" name="amostra" min="0" max="1000" value="{{ v.get('amostra') if v.get('amostra') not in (none, '') else 100 }}">
     <small>Por objeto. 0 desliga a amostra (só no completo).</small>
   </label>
   <label class="ds-campo">

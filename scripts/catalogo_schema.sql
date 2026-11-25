@@ -664,3 +664,34 @@ CREATE TABLE IF NOT EXISTS catalogo.importacao (
 -- Uma importacao ativa por vez: duas escrevendo no mesmo catalogo se atropelariam
 CREATE UNIQUE INDEX IF NOT EXISTS importacao_uma_ativa_idx
     ON catalogo.importacao ((true)) WHERE status IN ('pendente', 'rodando');
+
+-- ---------------------------------------------------------------------------
+-- Comparacao entre tabelas (Oracle > Comparar)
+--
+-- Analise por IA de um CONJUNTO de objetos -- a mesma tabela em varios schemas,
+-- ou tabelas quaisquer. A diferenca estrutural e calculada na hora (src/
+-- comparacao.py); so a analise paga fica gravada, uma por conjunto.
+--
+-- objetos e array, sem FK: objeto apagado do catalogo nao apaga a analise, a
+-- tela mostra que ele saiu. assinatura sao os ids ORDENADOS -- o mesmo conjunto
+-- em outra ordem e a mesma comparacao.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalogo.comparacao_ia (
+  id               bigserial PRIMARY KEY,
+  objetos          bigint[] NOT NULL,
+  assinatura       text NOT NULL UNIQUE,
+  rotulos          text[] NOT NULL,          -- SCHEMA.NOME de cada objeto, na hora da geracao
+  resumo           text NOT NULL,
+  semelhancas      jsonb NOT NULL DEFAULT '[]'::jsonb,  -- [{aspecto, detalhe}]
+  diferencas       jsonb NOT NULL DEFAULT '[]'::jsonb,  -- [{aspecto, tabelas, detalhe, impacto}]
+  equivalencias    jsonb NOT NULL DEFAULT '[]'::jsonb,  -- [{conceito, colunas: [{tabela, coluna}]}]
+  recomendacoes    jsonb NOT NULL DEFAULT '[]'::jsonb,  -- [texto]
+  provedor         text NOT NULL,
+  modelo           text NOT NULL,
+  gerado_em        timestamptz NOT NULL DEFAULT now(),
+  gerado_por       text,
+  linhas_no_prompt int NOT NULL DEFAULT 0,
+  tokens_entrada   int,
+  tokens_saida     int
+);

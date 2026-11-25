@@ -1187,3 +1187,14 @@ html, body {
 .ds-grafo-chave.ambos { background: #009597; }
 .ds-grafo-chave.fk    { background: #c98a12; }
 .ds-grafo-chave.gemea { background: #c0392f; }
+
+/* ---------- Oracle > Comparar ---------- */
+/* Celula de tabela que nao tem a coluna/FK/indice, e celula de linha que diverge */
+.ds-comparacao td.ds-cmp-ausente {
+  color: var(--text-tertiary);
+  background: var(--danger-soft);
+}
+
+.ds-comparacao td.ds-cmp-divergente {
+  background: var(--warning-soft, var(--danger-soft));
+}

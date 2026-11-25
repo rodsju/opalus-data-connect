@@ -7,6 +7,12 @@
 {% block miolo %}
 {{ kpis(cards) }}
 
+<p class="ds-nota">
+  <a href="/oracle/comparar?nome={{ objeto.nome | urlencode }}">
+    <i data-lucide="git-compare" style="width:14px;height:14px;"></i>
+    Comparar {{ objeto.nome }} entre schemas</a>
+</p>
+
 {% if aviso %}
   {% call alerta(tone='danger', icone='alert-circle') %}
   <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
