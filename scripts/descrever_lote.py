@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Processa um lote de IA -- descricoes ou vetores -- fora do processo do app.
+"""Processa um lote de IA -- descricoes, vetores, sensibilidade ou comparacoes -- fora do app.
 
 Uma tabela leva 56s na mediana para descrever, entao o lote completo passa de seis
 horas -- longe demais para um request ou para uma thread do uvicorn, que reinicia a
@@ -24,6 +24,7 @@ sys.path.insert(0, str(RAIZ))
 
 from src import (  # noqa: E402
     catalogo,
+    comparacao,
     embeddings,
     ia,
     log as log_mod,
@@ -54,13 +55,26 @@ def _vetorizar(item, par):
     return None, None
 
 
+def _comparar(item, par):
+    """Compara o conjunto do item (ancora + mesma tabela nos outros schemas) e grava.
+
+    Regrava por cima da analise do mesmo conjunto, se houver: quem enfileira ve na
+    tela o que ja tem analise e escolhe.
+    """
+    objetos = comparacao.carregar(item["objetos"])
+    analise, meta = comparacao.gerar(objetos, comparacao.diferenca(objetos), par)
+    comparacao.gravar(objetos, analise, meta, item.get("criado_por"))
+    return meta["tokens_entrada"], meta["tokens_saida"]
+
+
 # O miolo de cada item, por tarefa. Mesmo estilo do ADAPTADORES de src/ia.py.
 # `mascara` nao entra aqui: a unidade dela e o PACOTE de colunas, nao o item --
 # ver classificar_lote() no fim do arquivo.
-TAREFAS = {"descricao": _descrever, "embedding": _vetorizar}
+TAREFAS = {"descricao": _descrever, "embedding": _vetorizar, "comparacao": _comparar}
 
 # Falha esperada de cada tarefa: ganha mensagem curada em vez do traceback cru.
-ESPERADAS = (ia.GeracaoFalhou, embeddings.EmbutirFalhou, provedores.ConfiguracaoInvalida)
+ESPERADAS = (ia.GeracaoFalhou, embeddings.EmbutirFalhou, provedores.ConfiguracaoInvalida,
+             comparacao.ComparacaoInvalida)
 
 
 def marcar_item(item_id, status, **campos):
@@ -80,8 +94,10 @@ def marcar_item(item_id, status, **campos):
 
 def pendentes(lote_id):
     return catalogo.consultar(
-        """SELECT i.id, i.objeto_id, o.nome
-             FROM catalogo.lote_ia_item i JOIN catalogo.objeto o ON o.id = i.objeto_id
+        """SELECT i.id, i.objeto_id, i.objetos, o.nome, l.criado_por
+             FROM catalogo.lote_ia_item i
+             JOIN catalogo.objeto o ON o.id = i.objeto_id
+             JOIN catalogo.lote_ia l ON l.id = i.lote_id
             WHERE i.lote_id = %s AND i.status = 'pendente'
             ORDER BY o.nome""",
         (lote_id,),

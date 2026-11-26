@@ -9,6 +9,11 @@
   {% endcall %}
 {% endif %}
 
+<p class="ds-nota">
+  Muitas tabelas de uma vez? <a href="/oracle/comparar/lote">Comparar em lote</a>:
+  escolha um schema base e enfileire a comparação de cada tabela com os outros schemas.
+</p>
+
 <form method="get" action="/oracle/comparar" id="form-comparar">
   {% call painel('Escolher tabelas', minimo ~ ' a ' ~ maximo) %}
   <div class="ds-lote-config">

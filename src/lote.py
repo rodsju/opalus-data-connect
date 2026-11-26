@@ -24,7 +24,10 @@ logger = logging.getLogger(__name__)
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPT = os.path.join(RAIZ, "scripts", "descrever_lote.py")
 
-TAREFAS = ("descricao", "embedding", "mascara")
+TAREFAS = ("descricao", "embedding", "mascara", "comparacao")
+# A comparacao nao seleciona por /setup/lote: o item dela e um CONJUNTO de tabelas
+# montado em Oracle > Comparar > Em lote. Esta e a lista que a tela de setup aceita.
+TAREFAS_POR_OBJETO = ("descricao", "embedding", "mascara")
 
 # Custo por tabela, so para estimar antes de disparar. A descricao vem das
 # medianas do que ja foi gerado; o embedding e outra ordem de grandeza -- uma
@@ -36,6 +39,10 @@ CUSTO = {
     # pacote de 50 (34,1s, 1.969 entrada, 5.157 saida) e rateado pelas ~20 colunas
     # com descricao que um objeto tem neste catalogo -- 0,4 pacote por objeto.
     "mascara": {"segundos": 14, "entrada": 787, "saida": 2_063},
+    # Comparacao: por CONJUNTO. Estimativa de partida (prompt perto do teto de
+    # ia.TETO_PROMPT_BYTES, resposta de um JSON medio); trocar pela mediana real
+    # quando houver lotes rodados.
+    "comparacao": {"segundos": 45, "entrada": 8_000, "saida": 3_000},
 }
 
 SEM_DESCRICAO = (
@@ -175,8 +182,15 @@ def em_andamento(tarefa="descricao"):
     return catalogo.um(SQL_EM_ANDAMENTO, (tarefa,), f"lote de {tarefa} em andamento")
 
 
-def criar(provedor, modelo, paralelismo, objetos, filtro, usuario=None, tarefa="descricao"):
-    """Grava o cabecalho e um item por tabela. Devolve o id do lote."""
+def criar(provedor, modelo, paralelismo, objetos, filtro, usuario=None, tarefa="descricao",
+          conjuntos=None):
+    """Grava o cabecalho e um item por tabela. Devolve o id do lote.
+
+    `conjuntos` (so na comparacao): lista de listas de ids, a primeira de cada uma
+    e a ancora -- vira o objeto_id do item; a lista inteira vai em `objetos`.
+    """
+    if conjuntos is not None:
+        objetos = [conjunto[0] for conjunto in conjuntos if conjunto]
     if tarefa not in TAREFAS:
         raise LoteInvalido(f"Tarefa desconhecida: {tarefa}")
     if not objetos:
@@ -197,13 +211,28 @@ def criar(provedor, modelo, paralelismo, objetos, filtro, usuario=None, tarefa="
         "criação do lote",
     )["id"]
 
-    catalogo.executar(
-        """INSERT INTO catalogo.lote_ia_item (lote_id, objeto_id)
-           SELECT %s, unnest(%s::bigint[])
-           ON CONFLICT DO NOTHING""",
-        (lote, list(objetos)),
-        f"itens do lote {lote}",
-    )
+    if conjuntos is not None:
+        # Um statement so: jsonb leva listas de tamanhos diferentes, o que um
+        # bigint[][] nao aceita
+        catalogo.executar(
+            """INSERT INTO catalogo.lote_ia_item (lote_id, objeto_id, objetos)
+               SELECT %s, (c.valor->>0)::bigint,
+                      ARRAY(SELECT x::bigint
+                              FROM jsonb_array_elements_text(c.valor)
+                                   WITH ORDINALITY AS e(x, n) ORDER BY n)
+                 FROM jsonb_array_elements(%s::jsonb) AS c(valor)
+               ON CONFLICT DO NOTHING""",
+            (lote, json.dumps([list(c) for c in conjuntos if c])),
+            f"itens do lote {lote}",
+        )
+    else:
+        catalogo.executar(
+            """INSERT INTO catalogo.lote_ia_item (lote_id, objeto_id)
+               SELECT %s, unnest(%s::bigint[])
+               ON CONFLICT DO NOTHING""",
+            (lote, list(objetos)),
+            f"itens do lote {lote}",
+        )
     logger.info("lote %s de %s criado com %s tabelas", lote, tarefa, len(objetos))
     return lote
 
@@ -237,7 +266,7 @@ SELECT status, count(*) AS quantas,
 """
 
 SQL_FALHAS = """
-SELECT o.nome, i.erro, i.terminado_em
+SELECT o.nome, i.objetos, i.erro, i.terminado_em
   FROM catalogo.lote_ia_item i JOIN catalogo.objeto o ON o.id = i.objeto_id
  WHERE i.lote_id = %s AND i.status = 'falhou'
  ORDER BY i.terminado_em DESC LIMIT 50

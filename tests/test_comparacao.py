@@ -234,3 +234,76 @@ def test_resultado_renderiza_matriz_e_analise():
     assert "HML.CAPPAYMENT.SO_HML ≈ PRD.CAPPAYMENT.SO_PRD" in html
     assert 'class="ds-cmp--tipo"' in html and "NUMBER(14,2)" in html
     assert "/esquema?id=1&amp;objeto=CAPPAYMENT" in html or "/esquema?id=1&objeto=CAPPAYMENT" in html
+
+
+# --------------------------------------------------------------------------
+# Em lote
+# --------------------------------------------------------------------------
+
+_T0 = datetime.datetime(2026, 11, 1, tzinfo=datetime.timezone.utc)
+
+
+def _linha(i, nome, outros, atualizado=_T0):
+    return {"id": i, "nome": nome, "tipo": "TABLE", "num_registros": 5, "outros": outros,
+            "esquemas": [f"S{o}" for o in outros], "atualizado_em": atualizado}
+
+
+def test_grupos_classifica_a_situacao_de_cada_conjunto():
+    linhas = [
+        _linha(1, "A", [11, 21]),                      # sem analise
+        _linha(2, "B", [12]),                          # analise atual
+        _linha(3, "C", [13], _T0 + datetime.timedelta(days=5)),  # reimportada depois
+        _linha(4, "D", [14, 24, 34, 44, 54, 64]),      # 7 tabelas: passa do maximo
+    ]
+    gravadas = [
+        {"assinatura": "2,12", "provedor": "p", "modelo": "m", "gerado_em": _T0},
+        {"assinatura": "3,13", "provedor": "p", "modelo": "m", "gerado_em": _T0},
+    ]
+    grupos = comparacao.montar_grupos(linhas, gravadas)
+    assert [g["situacao"] for g in grupos] == ["sem", "gravada", "vencida", "excede"]
+    # A ancora (tabela do schema base) vem primeiro no conjunto
+    assert grupos[0]["chave"] == "1,11,21" and grupos[0]["ids"][0] == 1
+
+
+def test_assinatura_do_grupo_casa_com_a_da_comparacao_avulsa():
+    # Mesmo conjunto gravado pela tela avulsa em outra ordem: conta como analisado
+    grupos = comparacao.montar_grupos(
+        [_linha(9, "X", [3])], [{"assinatura": comparacao.assinatura([3, 9]),
+                                 "provedor": "p", "modelo": "m", "gerado_em": _T0}])
+    assert grupos[0]["situacao"] == "gravada"
+
+
+def test_conjuntos_validos_um_por_ancora():
+    assert comparacao.conjuntos_validos(["1,11,21", "2,12", "1,11"]) == [[1, 11, 21], [2, 12]]
+
+
+@pytest.mark.parametrize("valores", [[], ["1"], ["1,x"]])
+def test_conjuntos_invalidos(valores):
+    with pytest.raises(comparacao.ComparacaoInvalida):
+        comparacao.conjuntos_validos(valores)
+
+
+def test_menu_tem_o_lote():
+    assert any(item["href"] == "/oracle/comparar/lote"
+               for grupo in layout.MENU for item in grupo["itens"])
+
+
+def test_lote_renderiza_conjuntos_marcando_os_pendentes():
+    grupos = comparacao.montar_grupos(
+        [_linha(1, "A", [11]), _linha(2, "B", [12])],
+        [{"assinatura": "2,12", "provedor": "p", "modelo": "m", "gerado_em": _T0}])
+    html = layout.render(
+        "oracle_comparar_lote.html", "Comparar em lote", None, "/oracle/comparar/lote",
+        esquemas_lista=[{"id": 1, "nome": "HML", "servidor": "IW"},
+                        {"id": 2, "nome": "PRD", "servidor": "IW"}],
+        base_id=1, alvos={2}, termo="", so_sem=False, conjuntos=grupos, total=2,
+        contagem={"sem": 1, "gravada": 1, "vencida": 0, "excede": 0},
+        situacoes=comparacao.SITUACOES, paralelismo=1,
+        pares=[{"valor": "anthropic::m", "rotulo": "Anthropic · m"}], aberto=None,
+        estimativa={"tabelas": 1, "duracao": "45s", "tokens_entrada": 1, "tokens_saida": 1},
+        aviso=None,
+    )
+    assert 'name="conj" value="1,11" checked' in html
+    assert 'name="conj" value="2,12">' in html
+    assert 'name="alvo" value="2" checked' in html
+    assert "Enfileirar marcadas" in html

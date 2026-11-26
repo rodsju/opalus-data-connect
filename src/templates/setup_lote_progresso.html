@@ -60,7 +60,11 @@
       <tbody>
         {% for f in falhas %}
         <tr>
+          {% if f.objetos %}
+          <td><a href="/oracle/comparar/ver?ids={{ f.objetos | join(',') }}">{{ f.nome }}</a></td>
+          {% else %}
           <td><a href="/oracle/objetos/{{ f.nome }}">{{ f.nome }}</a></td>
+          {% endif %}
           <td>{{ f.erro }}</td>
         </tr>
         {% endfor %}
@@ -70,7 +74,7 @@
 {% endcall %}
 {% endif %}
 
-<a class="ds-btn" href="/setup/lote">
+<a class="ds-btn" href="{{ voltar or '/setup/lote' }}">
   <i data-lucide="arrow-left" style="width:16px;height:16px;"></i>Voltar
 </a>
 {% endblock %}

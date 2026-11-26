@@ -276,8 +276,8 @@ CREATE TABLE IF NOT EXISTS catalogo.descricao_ia (
 -- item por tabela que torna o lote retomavel depois de um reinicio.
 CREATE TABLE IF NOT EXISTS catalogo.lote_ia (
   id           bigserial PRIMARY KEY,
-  tarefa       text NOT NULL DEFAULT 'descricao'    -- descricao | embedding | mascara
-                    CHECK (tarefa IN ('descricao', 'embedding', 'mascara')),
+  tarefa       text NOT NULL DEFAULT 'descricao'    -- descricao | embedding | mascara | comparacao
+                    CHECK (tarefa IN ('descricao', 'embedding', 'mascara', 'comparacao')),
   provedor     text NOT NULL,
   modelo       text NOT NULL,
   paralelismo  int  NOT NULL DEFAULT 4,
@@ -299,6 +299,9 @@ CREATE TABLE IF NOT EXISTS catalogo.lote_ia_item (
   tokens_saida   int,
   iniciado_em    timestamptz,
   terminado_em   timestamptz,
+  -- So na tarefa comparacao: o conjunto inteiro (objeto_id e a tabela do schema
+  -- base, a ancora do grupo; os demais sao a mesma tabela nos outros schemas)
+  objetos        bigint[],
   UNIQUE (lote_id, objeto_id)
 );
 
@@ -370,7 +373,9 @@ ALTER TABLE catalogo.lote_ia
 ALTER TABLE catalogo.lote_ia DROP CONSTRAINT IF EXISTS lote_ia_tarefa_check;
 ALTER TABLE catalogo.lote_ia
   ADD CONSTRAINT lote_ia_tarefa_check
-      CHECK (tarefa IN ('descricao', 'embedding', 'mascara'));
+      CHECK (tarefa IN ('descricao', 'embedding', 'mascara', 'comparacao'));
+ALTER TABLE catalogo.lote_ia_item
+  ADD COLUMN IF NOT EXISTS objetos bigint[];
 
 
 -- ---------------------------------------------------------------------------
@@ -695,3 +700,27 @@ CREATE TABLE IF NOT EXISTS catalogo.comparacao_ia (
   tokens_entrada   int,
   tokens_saida     int
 );
+
+-- Fontes de dados > Assistente de consulta: auditoria de toda tentativa de
+-- consulta ao vivo na origem (src/consulta.py) -- executada, recusada pela
+-- checagem, com erro do Oracle ou so sugerida pela IA. Guarda o SQL e quem
+-- rodou; NUNCA o resultado.
+CREATE TABLE IF NOT EXISTS catalogo.consulta_log (
+  id          bigserial PRIMARY KEY,
+  esquema_id  bigint REFERENCES catalogo.esquema(id) ON DELETE SET NULL,
+  usuario     text,
+  modo        text NOT NULL CHECK (modo IN ('sql', 'prompt')),
+  prompt      text,
+  sql         text,
+  status      text NOT NULL CHECK (status IN ('ok', 'recusada', 'erro', 'sugerida')),
+  linhas      int,
+  truncada    boolean,
+  ms          int,
+  erro        text,
+  provedor    text,
+  modelo      text,
+  criado_em   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS consulta_log_usuario_idx
+    ON catalogo.consulta_log (usuario, criado_em DESC);

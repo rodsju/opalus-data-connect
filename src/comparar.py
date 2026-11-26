@@ -5,9 +5,10 @@ transversal aos schemas: ignora o pre-filtro do cabecalho, porque comparar
 schemas e justamente o ponto.
 """
 
-from . import catalogo, comparacao, layout, provedores
+from . import catalogo, comparacao, esquemas, layout, lote, provedores
 
 CAMINHO = "/oracle/comparar"
+CAMINHO_LOTE = "/oracle/comparar/lote"
 
 
 def _pagina_erro(falha, usuario):
@@ -16,7 +17,7 @@ def _pagina_erro(falha, usuario):
         "Não conseguimos montar a comparação",
         usuario,
         CAMINHO,
-        crumb="Oracle",
+        crumb="Fontes de dados",
         descricao="A comparação lê o catálogo no Postgres.",
         alvo=getattr(falha, "descricao", "comparação"),
         detalhe=str(getattr(falha, "causa", falha)),
@@ -50,7 +51,7 @@ def gerar_selecao(nome="", termo="", selecionados=(), usuario=None, aviso=None):
         "Comparar tabelas",
         usuario,
         CAMINHO,
-        crumb="Oracle",
+        crumb="Fontes de dados",
         descricao=(
             "Compare a mesma tabela entre schemas, ou tabelas quaisquer: a diferença "
             "estrutural sai na hora, e a IA explica o que ela significa."
@@ -90,7 +91,7 @@ def gerar_resultado(ids, usuario=None, aviso=None):
         "Comparação",
         usuario,
         CAMINHO,
-        crumb="Oracle · Comparar",
+        crumb="Fontes de dados · Comparar",
         descricao=" × ".join(o["rotulo"] for o in objetos),
         objetos=objetos,
         ids=",".join(str(o["id"]) for o in objetos),
@@ -108,6 +109,67 @@ def gerar_resultado(ids, usuario=None, aviso=None):
         ia=gravada,
         ia_vencida=comparacao.vencida(gravada, objetos),
         provedores=pares,
+        aviso=aviso,
+    )
+    return html, 200
+
+
+def gerar_lote(base_id=None, alvos=None, termo="", so_sem=False, paralelismo=1,
+               usuario=None, aviso=None):
+    """Schema base contra os outros: um conjunto por tabela, com a situacao de cada um.
+
+    `alvos` None e "primeira visita": todos os outros schemas entram. Lista vazia
+    e o usuario ter desmarcado tudo.
+    """
+    try:
+        lista = esquemas.listar()
+        validos = {e["id"] for e in lista}
+        if base_id not in validos:
+            base_id = esquemas.atual_id() if esquemas.atual_id() in validos else (
+                lista[0]["id"] if lista else None)
+        if alvos is None:
+            alvos = [e["id"] for e in lista if e["id"] != base_id]
+        alvos = [a for a in alvos if a in validos and a != base_id]
+        conjuntos = comparacao.grupos(base_id, alvos, termo) if base_id else []
+        pares = provedores.disponiveis()
+        aberto = lote.em_andamento("comparacao")
+    except provedores.ConfiguracaoInvalida as falha:
+        pares, aberto = [], None
+        aviso = aviso or {"motivo": falha.motivo, "detalhe": falha.detalhe}
+    except catalogo.ConsultaFalhou as falha:
+        return _pagina_erro(falha, usuario)
+
+    contagem = {chave: 0 for chave in comparacao.SITUACOES}
+    for conjunto in conjuntos:
+        contagem[conjunto["situacao"]] += 1
+    visiveis = [c for c in conjuntos if not so_sem or c["situacao"] in ("sem", "vencida")]
+
+    html = layout.render(
+        "oracle_comparar_lote.html",
+        "Comparar em lote",
+        usuario,
+        CAMINHO_LOTE,
+        crumb="Fontes de dados · Comparar",
+        descricao=(
+            "Escolha o schema base: cada tabela dele é comparada com a de mesmo nome "
+            "nos outros schemas. Cada tabela é um conjunto, e os conjuntos marcados "
+            "entram numa fila, um por vez."
+        ),
+        esquemas_lista=lista,
+        base_id=base_id,
+        alvos=set(alvos),
+        termo=termo,
+        so_sem=so_sem,
+        conjuntos=visiveis,
+        total=len(conjuntos),
+        contagem=contagem,
+        situacoes=comparacao.SITUACOES,
+        paralelismo=paralelismo,
+        pares=pares,
+        aberto=aberto,
+        estimativa=lote.estimativa(
+            contagem["sem"] + contagem["vencida"], paralelismo, "comparacao"
+        ),
         aviso=aviso,
     )
     return html, 200

@@ -497,3 +497,104 @@ def listar(limite=30):
 def vencida(gravada, objetos):
     """Algum objeto foi reimportado depois da analise."""
     return bool(gravada) and any(o["atualizado_em"] > gravada["gerado_em"] for o in objetos)
+
+
+# --------------------------------------------------------------------------
+# Em lote: um schema base contra os outros, um conjunto por tabela
+#
+# Cada tabela do schema base vira UM conjunto: ela + a tabela de mesmo nome em
+# cada schema alvo que a tem. Os conjuntos nao se misturam -- todas as A entre
+# si, todas as B entre si -- e vao para a fila do lote de IA (tarefa comparacao),
+# um por vez.
+# --------------------------------------------------------------------------
+
+SQL_GRUPOS = """
+SELECT b.id, b.nome, b.tipo, b.num_registros,
+       array_agg(o.id ORDER BY s.nome, e.nome)          AS outros,
+       array_agg(e.nome ORDER BY s.nome, e.nome)        AS esquemas,
+       greatest(b.atualizado_em, max(o.atualizado_em))  AS atualizado_em
+  FROM catalogo.objeto b
+  JOIN catalogo.objeto o   ON upper(o.nome) = upper(b.nome)
+                          AND o.esquema_id = ANY(%s) AND o.esquema_id <> b.esquema_id
+  JOIN catalogo.esquema e  ON e.id = o.esquema_id
+  JOIN catalogo.servidor s ON s.id = e.servidor_id
+ WHERE b.esquema_id = %s {filtro}
+ GROUP BY b.id
+ ORDER BY b.nome
+"""
+
+SQL_GRAVADAS = """
+SELECT assinatura, provedor, modelo, gerado_em
+  FROM catalogo.comparacao_ia WHERE assinatura = ANY(%s)
+"""
+
+# Situacao de cada conjunto na tela. "vencida" e ter analise que a reimportacao
+# de alguma das tabelas deixou para tras.
+SITUACOES = {
+    "sem": "sem análise",
+    "gravada": "com análise",
+    "vencida": "análise desatualizada",
+    "excede": f"mais de {MAXIMO} schemas",
+}
+
+
+def montar_grupos(linhas, gravadas):
+    """Linhas de SQL_GRUPOS + analises ja gravadas -> conjuntos com situacao. Pura."""
+    por_assinatura = {g["assinatura"]: g for g in gravadas}
+    grupos = []
+    for linha in linhas:
+        ids = [linha["id"], *linha["outros"]]
+        gravada = por_assinatura.get(assinatura(ids))
+        if len(ids) > MAXIMO:
+            situacao = "excede"
+        elif not gravada:
+            situacao = "sem"
+        elif linha["atualizado_em"] and linha["atualizado_em"] > gravada["gerado_em"]:
+            situacao = "vencida"
+        else:
+            situacao = "gravada"
+        grupos.append({
+            **linha,
+            "ids": ids,
+            "chave": ",".join(str(i) for i in ids),
+            "situacao": situacao,
+            "rotulo_situacao": SITUACOES[situacao],
+            "gravada": gravada,
+        })
+    return grupos
+
+
+def grupos(base_id, alvos, termo=""):
+    """Conjuntos do schema base contra os alvos, com a situacao da analise de cada um."""
+    alvos = [a for a in alvos if a != base_id]
+    if not alvos:
+        return []
+    filtro, params = "", [list(alvos), base_id]
+    if termo.strip():
+        filtro = "AND b.nome ILIKE %s"
+        params.append(f"%{termo.strip()}%")
+    linhas = catalogo.consultar(
+        SQL_GRUPOS.format(filtro=filtro), tuple(params), "conjuntos da comparação em lote"
+    )
+    assinaturas = [assinatura([linha["id"], *linha["outros"]]) for linha in linhas]
+    gravadas = catalogo.consultar(
+        SQL_GRAVADAS, (assinaturas,), "análises gravadas dos conjuntos"
+    ) if assinaturas else []
+    return montar_grupos(linhas, gravadas)
+
+
+def conjuntos_validos(valores):
+    """"12,57,90" de cada linha marcada -> listas de ids, ancora primeiro.
+
+    Cada conjunto passa pela mesma regra da comparacao avulsa (2 a 6, sem lixo).
+    """
+    conjuntos, vistos = [], set()
+    for valor in valores:
+        ids = ids_validos(valor)
+        if ids[0] in vistos:
+            continue
+        vistos.add(ids[0])
+        conjuntos.append(ids)
+    if not conjuntos:
+        raise ComparacaoInvalida("Marque ao menos uma tabela para enfileirar")
+    return conjuntos

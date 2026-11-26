@@ -507,6 +507,36 @@ def credencial(servidor, perfil=None):
     return usuario, senha_de(servidor, perfil)
 
 
+def origem_do_esquema(esquema_id, perfil=None):
+    """Servidor, schema e credencial de um esquema do cadastro.
+
+    Fonte unica de "como conecto neste schema": o mapeador (Importar dados) e o
+    assistente de consulta passam por aqui. Levanta ConfiguracaoInvalida.
+    """
+    linha = catalogo.um(
+        "SELECT nome, servidor_id FROM catalogo.esquema WHERE id = %s",
+        (esquema_id,), f"esquema {esquema_id}",
+    )
+    if not linha:
+        raise ConfiguracaoInvalida(f"Schema {esquema_id} não existe no cadastro de servidores")
+    servidor = buscar(linha["servidor_id"])
+    if not servidor:
+        raise ConfiguracaoInvalida("Servidor do schema não encontrado")
+    if servidor["tipo"] != "oracle":
+        raise ConfiguracaoInvalida(
+            f"Só sabemos falar com Oracle; o servidor é {servidor['tipo']}"
+        )
+    usuario, senha = credencial(servidor, perfil)
+    return {
+        "host": servidor["host"],
+        "porta": str(servidor["porta"]),
+        "service": servidor["base"],
+        "schema": linha["nome"].upper(),
+        "usuario": usuario,
+        "senha": senha,
+    }
+
+
 def testar(servidor_id, perfil=None):
     """(ok, mensagem, ms). Mesma pergunta do /health: SELECT USER FROM dual."""
     servidor = buscar(servidor_id)

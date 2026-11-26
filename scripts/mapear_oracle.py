@@ -624,31 +624,14 @@ def origem_do_cadastro(conexao, esquema_id):
 
     A credencial vem do perfil do ambiente (servidores.credencial): GCP no Cloud
     Run Job, Local na maquina. Levanta ValueError com a mensagem para o usuario.
+    `conexao` fica na assinatura por compatibilidade: a leitura e a mesma de
+    servidores.origem_do_esquema, que o assistente de consulta tambem usa.
     """
-    linha = conexao.execute(
-        "SELECT e.nome, e.servidor_id FROM catalogo.esquema e WHERE e.id = %s",
-        (esquema_id,),
-    ).fetchone()
-    if not linha:
-        raise ValueError(f"schema {esquema_id} nao existe no cadastro de servidores")
-    schema, servidor_id = linha
-
     servidores = _src().servidores
-    servidor = servidores.buscar(servidor_id)
-    if servidor["tipo"] != "oracle":
-        raise ValueError(f"o mapeador so conhece Oracle; o servidor e {servidor['tipo']}")
     try:
-        usuario, senha = servidores.credencial(servidor)
+        return servidores.origem_do_esquema(esquema_id)
     except servidores.ConfiguracaoInvalida as erro:
         raise ValueError(f"{erro.motivo}. {erro.detalhe}".strip()) from erro
-    return {
-        "host": servidor["host"],
-        "porta": str(servidor["porta"]),
-        "service": servidor["base"],
-        "schema": schema.upper(),
-        "usuario": usuario,
-        "senha": senha,
-    }
 
 
 class Progresso:

@@ -32,7 +32,7 @@ SSO_URL = SSO_POR_AMBIENTE.get(AMBIENTE, SSO_POR_AMBIENTE["hml"])
 
 MENU = [
     {
-        "titulo": "Oracle",
+        "titulo": "Fontes de dados",
         "itens": [
             {"href": "/oracle", "icone": "gauge", "rotulo": "Visão geral"},
             {"href": "/oracle/objetos", "icone": "table-2", "rotulo": "Objetos"},
@@ -45,7 +45,11 @@ MENU = [
             {"href": "/oracle/grafo", "icone": "network", "rotulo": "Visão Grafo"},
             {"href": "/oracle/mapa", "icone": "orbit", "rotulo": "Mapa semântico"},
             {"href": "/oracle/busca", "icone": "search", "rotulo": "Busca semântica"},
+            {"href": "/oracle/consulta", "icone": "terminal-square",
+             "rotulo": "Assistente de consulta"},
             {"href": "/oracle/comparar", "icone": "git-compare", "rotulo": "Comparar"},
+            {"href": "/oracle/comparar/lote", "icone": "list-checks",
+             "rotulo": "Comparar em lote"},
             {"href": "/oracle/orfas", "icone": "unlink", "rotulo": "Órfãs"},
             {"href": "/oracle/amostras", "icone": "scan-search", "rotulo": "Amostras"},
             {"href": "/oracle/indices", "icone": "list-ordered", "rotulo": "Índices"},

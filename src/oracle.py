@@ -311,7 +311,7 @@ def pagina_erro(falha, usuario, caminho):
         "Não conseguimos ler o catálogo",
         usuario,
         caminho,
-        crumb="Oracle",
+        crumb="Fontes de dados",
         descricao="O catálogo fica no Postgres, alimentado por scripts/mapear_oracle.py.",
         alvo=falha.descricao,
         detalhe=str(falha.causa),
@@ -391,7 +391,7 @@ def gerar_lista(secao, pagina, por_pagina, termo, valores=None, usuario=None):
         config["titulo"],
         usuario,
         caminho,
-        crumb="Oracle",
+        crumb="Fontes de dados",
         descricao=config["descricao"],
         colunas=colunas,
         linhas=celulas,
@@ -617,7 +617,7 @@ def gerar_visao_geral(usuario=None):
         "Catálogo Oracle",
         usuario,
         VOLTAR,
-        crumb="Oracle",
+        crumb="Fontes de dados",
         descricao="Foto do schema extraída para o Postgres por scripts/mapear_oracle.py.",
         cards=montar_kpis(contagens),
         classes=montar_classes(classes),
@@ -827,7 +827,7 @@ def gerar_detalhe(nome, usuario=None, aviso=None):
         objeto["nome"],
         usuario,
         "/oracle/objetos",
-        crumb="Oracle · Objetos",
+        crumb="Fontes de dados · Objetos",
         descricao_pagina=(
             (descricao and descricao["rotulo"])
             or objeto["comentario"]
@@ -890,7 +890,7 @@ def gerar_grafo(usuario=None):
         "Visão Grafo",
         usuario,
         "/oracle/grafo",
-        crumb="Oracle",
+        crumb="Fontes de dados",
         descricao=(
             "Começa pelas raízes do schema — tabelas com registros que são "
             "referenciadas por outras e não dependem de nenhuma. Clique num nó para "
@@ -940,7 +940,7 @@ def gerar_mapa(excluir="", termo="", topk=TOPK_MAPA, usuario=None):
         "Mapa semântico",
         usuario,
         MAPA,  # canonico: o menu casa por href exato, e a URL vem com querystring
-        crumb="Oracle",
+        crumb="Fontes de dados",
         descricao=(
             "As tabelas posicionadas por significado, não por chave estrangeira. "
             "Blocos de cor são assuntos; a linha entre duas tabelas é o quanto "
@@ -1072,7 +1072,7 @@ def gerar_busca(termo="", escopo="ambos", topk=20, par=None, excluir="", usuario
         "Busca semântica",
         usuario,
         BUSCA,  # canonico: o menu casa por href exato, e a URL vem com querystring
-        crumb="Oracle",
+        crumb="Fontes de dados",
         descricao=(
             "Procura por significado, não por nome. Encontra só o que foi vetorizado "
             "em Setup › Lote de vetores."

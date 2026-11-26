@@ -1,0 +1,183 @@
+{# Assistente de consulta: SQL escrito ou sugerido pela IA, executado ao vivo com travas. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, kpis, painel %}
+
+{% block miolo %}
+{% if aviso %}
+  {% call alerta(tone='danger', icone='alert-circle') %}
+  <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+{% if not esquema %}
+  {% call alerta(tone='info') %}
+  Nenhum schema escolhido. Escolha um no cabeçalho — a consulta roda nele.
+  {% endcall %}
+{% else %}
+
+{% call alerta(tone='info', icone='shield-check') %}
+Somente leitura · no máximo <strong>{{ limite }} linhas</strong> · tempo máximo {{ tempo_maximo }} s ·
+colunas sensíveis aparecem como {{ mascara }} · toda execução fica registrada.
+{% if cobertura and cobertura.sem_avaliacao %}
+<br><small>{{ cobertura.sem_avaliacao | fmt }} de {{ cobertura.colunas | fmt }} colunas deste schema
+ainda não passaram pela avaliação de sensibilidade e não são mascaradas —
+rode o <a href="/setup/lote?tarefa=mascara">Lote de sensibilidade</a>.</small>
+{% endif %}
+{% endcall %}
+
+<div class="ds-consulta-abas" role="tablist">
+  <button class="ds-btn" type="button" role="tab" data-aba="sql"
+          aria-selected="{{ 'true' if aba == 'sql' else 'false' }}">
+    <i data-lucide="code" style="width:16px;height:16px;"></i>Escrever SQL</button>
+  <button class="ds-btn" type="button" role="tab" data-aba="prompt"
+          aria-selected="{{ 'true' if aba == 'prompt' else 'false' }}">
+    <i data-lucide="sparkles" style="width:16px;height:16px;"></i>Pedir à IA</button>
+</div>
+
+<section id="aba-prompt"{% if aba != 'prompt' %} hidden{% endif %}>
+{% call painel('Pedir à IA', 'gera o SQL; não executa') %}
+  <form method="post" action="/oracle/consulta/sugerir">
+    <label class="ds-campo ds-campo--largo">
+      <span>O que você quer consultar?</span>
+      <textarea name="pedido" rows="3" placeholder="Pagamentos do último mês por status">{{ pedido }}</textarea>
+      <small>A IA lê o dicionário do catálogo (tabelas, colunas, descrições, FKs).
+        Nenhum dado real vai para o provedor.</small>
+    </label>
+    <div class="ds-lote-config">
+      <label class="ds-campo">
+        <span>Tabelas (opcional)</span>
+        <input type="text" name="tabelas" value="{{ tabelas }}" placeholder="CAPPAYMENT, CAPBUDGET">
+        <small>Entram no contexto além das que a busca achar.</small>
+      </label>
+      {% if pares %}
+      <label class="ds-campo">
+        <span>Provedor e modelo</span>
+        <select name="provedor">
+          {% for p in pares %}
+          <option value="{{ p.valor }}"{% if p.valor == provedor %} selected{% endif %}>{{ p.rotulo }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endif %}
+    </div>
+    {% if pares %}
+    <button class="ds-btn" type="submit">
+      <i data-lucide="sparkles" style="width:16px;height:16px;"></i>Sugerir SQL
+    </button>
+    {% else %}
+      {% call alerta(tone='info') %}
+      Nenhum provedor de IA disponível. Cadastre um em <a href="/setup/provedores">Setup › AI Providers</a>.
+      {% endcall %}
+    {% endif %}
+  </form>
+{% endcall %}
+</section>
+
+{% if sugestao %}
+{% call painel('Sugestão da IA', sugestao.provedor ~ '/' ~ sugestao.modelo) %}
+  <p class="ds-ia-resumo">{{ sugestao.explicacao }}</p>
+  {% if sugestao.premissas %}
+  <h4>Premissas</h4>
+  <ul>{% for p in sugestao.premissas %}<li>{{ p }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% for a in sugestao.avisos %}
+    {% call alerta(tone='warning') %}{{ a }}{% endcall %}
+  {% endfor %}
+  <p class="ds-ia-meta">
+    Contexto: {{ sugestao.tabelas | join(', ') }} (busca {{ sugestao.via }}) ·
+    {{ sugestao.tokens_entrada | fmt }} tokens de entrada, {{ sugestao.tokens_saida | fmt }} de saída.
+    Revise o SQL abaixo e clique em Executar.
+  </p>
+{% endcall %}
+{% endif %}
+
+{% call painel('SQL', esquema.nome) %}
+  <form method="post" action="/oracle/consulta/executar">
+    <input type="hidden" name="modo" value="{{ modo }}">
+    <input type="hidden" name="pedido" value="{{ pedido }}">
+    <label class="ds-campo ds-campo--largo">
+      <span>Consulta (SELECT ou WITH)</span>
+      <textarea name="sql" rows="10" spellcheck="false"
+                placeholder="SELECT * FROM CAPPAYMENT WHERE ...">{{ sql }}</textarea>
+      <small>Sem prefixo de schema: a sessão já aponta para {{ esquema.nome }}.
+        Escrita, PL/SQL, database link e objetos do sistema são recusados.</small>
+    </label>
+    <button class="ds-btn" type="submit">
+      <i data-lucide="play" style="width:16px;height:16px;"></i>Executar
+    </button>
+  </form>
+{% endcall %}
+
+{% if resultado %}
+{{ kpis(cards) }}
+{% if resultado.truncada %}
+  {% call alerta(tone='warning') %}
+  Resultado cortado em {{ limite }} linhas. Refine o filtro ou agregue para ver o todo.
+  {% endcall %}
+{% endif %}
+{% call painel('Resultado', resultado.linhas | length ~ ' linhas') %}
+  {% if resultado.linhas %}
+  <div class="ds-table-wrap completa">
+    <table class="ds-table ds-consulta-resultado">
+      <thead><tr>
+        {% for c in resultado.colunas %}
+        <th class="mono">{{ c }}{% if c in resultado.mascaradas %} <i data-lucide="eye-off" style="width:12px;height:12px;" title="sensível"></i>{% endif %}</th>
+        {% endfor %}
+      </tr></thead>
+      <tbody>
+        {% for linha in resultado.linhas %}
+        <tr>
+          {% for v in linha %}
+          <td class="mono{% if v == mascara %} ds-consulta-mascarada{% endif %}">{{ '—' if v is none else v }}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="ds-vazio">A consulta não devolveu linhas.</p>
+  {% endif %}
+{% endcall %}
+{% endif %}
+
+{% endif %}{# esquema #}
+
+{% call painel('Suas últimas consultas', historico | length ~ '') %}
+  {% if historico %}
+  <div class="ds-table-wrap">
+    <table class="ds-table">
+      <thead><tr><th>Quando</th><th>Schema</th><th>Situação</th><th class="num">Linhas</th>
+                 <th>SQL / pedido</th><th></th></tr></thead>
+      <tbody>
+        {% for h in historico %}
+        <tr>
+          <td>{{ h.criado_em | fmt }}</td>
+          <td>{{ h.esquema or '—' }}</td>
+          <td>{{ h.status }}{% if h.truncada %} (cortada){% endif %}</td>
+          <td class="num">{{ h.linhas | fmt }}</td>
+          <td class="mono">{{ (h.prompt or h.sql or '') | truncate(90) }}</td>
+          <td>{% if h.sql %}<a href="/oracle/consulta?log={{ h.id }}">reabrir</a>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="ds-vazio">Nenhuma consulta ainda.</p>
+  {% endif %}
+{% endcall %}
+
+<script>
+document.querySelectorAll('.ds-consulta-abas [data-aba]').forEach(function (botao) {
+  botao.addEventListener('click', function () {
+    var prompt = botao.dataset.aba === 'prompt';
+    var secao = document.getElementById('aba-prompt');
+    if (secao) secao.hidden = !prompt;
+    document.querySelectorAll('.ds-consulta-abas [data-aba]').forEach(function (b) {
+      b.setAttribute('aria-selected', b === botao ? 'true' : 'false');
+    });
+  });
+});
+</script>
+{% endblock %}

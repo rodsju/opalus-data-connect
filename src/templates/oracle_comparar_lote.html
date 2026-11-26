@@ -1,0 +1,165 @@
+{# Comparacao em lote: schema base x outros, um conjunto por tabela, fila no lote de IA. #}
+{% extends "pagina.html" %}
+{% from "partials/macros.html" import alerta, kpis, painel %}
+
+{% block miolo %}
+{% if aviso %}
+  {% call alerta(tone='danger', icone='alert-circle') %}
+  <strong>{{ aviso.motivo }}.</strong>{% if aviso.detalhe %} {{ aviso.detalhe }}{% endif %}
+  {% endcall %}
+{% endif %}
+
+{% if aberto %}
+  {% call alerta(tone='warning') %}
+  O lote de comparações <a href="/setup/lote/{{ aberto.id }}">#{{ aberto.id }}</a> ainda
+  está em andamento. Espere terminar ou cancele antes de enfileirar outro.
+  {% endcall %}
+{% endif %}
+
+<p class="ds-nota"><a href="/oracle/comparar">← Comparação avulsa</a></p>
+
+<form method="get" action="/oracle/comparar/lote">
+  <input type="hidden" name="enviado" value="1">
+  <input type="hidden" name="base_anterior" value="{{ base_id or '' }}">
+  {% call painel('Schemas', esquemas_lista | length ~ '') %}
+  <div class="ds-lote-config">
+    <label class="ds-campo">
+      <span>Schema base</span>
+      <select name="base" onchange="this.form.submit()">
+        {% for e in esquemas_lista %}
+        <option value="{{ e.id }}"{% if e.id == base_id %} selected{% endif %}>{{ e.servidor }} · {{ e.nome }}</option>
+        {% endfor %}
+      </select>
+      <small>As tabelas dele definem os conjuntos.</small>
+    </label>
+    <label class="ds-campo">
+      <span>Filtrar por nome</span>
+      <input type="search" name="q" value="{{ termo }}" placeholder="PAYMENT">
+    </label>
+  </div>
+  <div class="ds-campo">
+    <span>Comparar com</span>
+    {% for e in esquemas_lista if e.id != base_id %}
+    <label class="ds-busca__opcao">
+      <input type="checkbox" name="alvo" value="{{ e.id }}"{% if e.id in alvos %} checked{% endif %}>
+      {{ e.servidor }} · {{ e.nome }}
+    </label>
+    {% else %}
+    <small>Só há um schema no catálogo: importe outro em Setup › Importar dados.</small>
+    {% endfor %}
+  </div>
+  <label class="ds-busca__opcao">
+    <input type="checkbox" name="so_sem" value="1"{% if so_sem %} checked{% endif %}>
+    Só sem análise ou desatualizadas
+  </label>
+  <div class="ds-form__acoes">
+    <button class="ds-btn" type="submit">
+      <i data-lucide="search" style="width:16px;height:16px;"></i>Mapear
+    </button>
+  </div>
+  {% endcall %}
+</form>
+
+{{ kpis([
+  {'rotulo': 'Tabelas com par', 'valor': total | fmt, 'hint': 'no base e em ao menos um alvo'},
+  {'rotulo': situacoes.sem | capitalize, 'valor': contagem.sem | fmt, 'hint': ''},
+  {'rotulo': situacoes.vencida | capitalize, 'valor': contagem.vencida | fmt,
+   'hint': 'reimportadas depois da análise'},
+  {'rotulo': situacoes.gravada | capitalize, 'valor': contagem.gravada | fmt, 'hint': ''},
+]) }}
+
+<form method="post" action="/oracle/comparar/lote" id="form-cmp-lote"
+      onsubmit="return confirmarCmpLote(this)">
+  {# O recorte viaja junto, para a tela voltar igual se o lote for recusado #}
+  <input type="hidden" name="base" value="{{ base_id or '' }}">
+  {% for a in alvos %}<input type="hidden" name="alvo" value="{{ a }}">{% endfor %}
+  <input type="hidden" name="q" value="{{ termo }}">
+  {% if so_sem %}<input type="hidden" name="so_sem" value="1">{% endif %}
+
+  {% call painel('Conjuntos', conjuntos | length ~ (' de ' ~ total if conjuntos | length != total else '')) %}
+    {% if conjuntos %}
+    <div class="ds-form__acoes">
+      <button class="ds-btn" type="button" onclick="marcarCmp('todas')">Marcar todas</button>
+      <button class="ds-btn" type="button" onclick="marcarCmp('pendentes')">Só sem análise</button>
+      <button class="ds-btn" type="button" onclick="marcarCmp('nenhuma')">Desmarcar</button>
+    </div>
+    <div class="ds-table-wrap completa">
+      <table class="ds-table">
+        <thead><tr><th></th><th>Tabela</th><th class="num">Registros no base</th>
+                   <th>Também em</th><th>Análise</th><th></th></tr></thead>
+        <tbody>
+          {% for c in conjuntos %}
+          <tr data-situacao="{{ c.situacao }}">
+            <td>{% if c.situacao != 'excede' %}<input type="checkbox" name="conj" value="{{ c.chave }}"
+                  {%- if c.situacao in ('sem', 'vencida') %} checked{% endif %}>{% endif %}</td>
+            <td class="mono">{{ c.nome }}</td>
+            <td class="num">{{ c.num_registros | fmt }}</td>
+            <td>{{ c.esquemas | join(', ') }}</td>
+            <td>
+              {{ c.rotulo_situacao }}
+              {% if c.gravada %}<small class="ds-ia-meta">· {{ c.gravada.modelo }} · {{ c.gravada.gerado_em | fmt }}</small>{% endif %}
+            </td>
+            <td><a href="/oracle/comparar/ver?ids={{ c.chave }}">ver</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% elif not alvos %}
+    <p class="ds-vazio">Marque ao menos um schema em “Comparar com”.</p>
+    {% else %}
+    <p class="ds-vazio">Nenhuma tabela do schema base tem par nos schemas marcados{% if termo or so_sem %} com este filtro{% endif %}.</p>
+    {% endif %}
+
+    {% if conjuntos and pares %}
+    <div class="ds-lote-config">
+      <label class="ds-campo">
+        <span>Provedor e modelo</span>
+        <select name="par">
+          {% for p in pares %}<option value="{{ p.valor }}">{{ p.rotulo }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="ds-campo">
+        <span>Paralelismo</span>
+        <input type="number" name="paralelismo" value="{{ paralelismo }}" min="1" max="4">
+        <small>1 = um conjunto por vez, em fila.</small>
+      </label>
+    </div>
+    <p class="ds-ia-meta">
+      Estimativa para as {{ estimativa.tabelas | fmt }} sem análise ou desatualizadas:
+      ~{{ estimativa.duracao }} · ~{{ estimativa.tokens_entrada | fmt }} tokens de entrada,
+      ~{{ estimativa.tokens_saida | fmt }} de saída
+    </p>
+    {% if not aberto %}
+    <button class="ds-btn" type="submit">
+      <i data-lucide="play" style="width:16px;height:16px;"></i>Enfileirar marcadas
+    </button>
+    {% endif %}
+    {% elif conjuntos %}
+      {% call alerta(tone='info') %}
+      Nenhum provedor de IA disponível. Cadastre um em
+      <a href="/setup/provedores">Setup › AI Providers</a>.
+      {% endcall %}
+    {% endif %}
+  {% endcall %}
+</form>
+
+<script>
+function marcarCmp(modo) {
+  document.querySelectorAll('#form-cmp-lote tr[data-situacao]').forEach(function (tr) {
+    var caixa = tr.querySelector('input[name="conj"]');
+    if (!caixa) return;
+    var s = tr.dataset.situacao;
+    caixa.checked = modo === 'todas' || (modo === 'pendentes' && (s === 'sem' || s === 'vencida'));
+  });
+}
+function confirmarCmpLote(form) {
+  var n = form.querySelectorAll('input[name="conj"]:checked').length;
+  if (!n) { alert('Marque ao menos uma tabela.'); return false; }
+  var refazer = form.querySelectorAll('tr[data-situacao="gravada"] input[name="conj"]:checked').length;
+  var texto = 'Enfileirar ' + n + ' comparações?';
+  if (refazer) texto += ' ' + refazer + ' já têm análise atual e serão regeradas.';
+  return confirm(texto);
+}
+</script>
+{% endblock %}

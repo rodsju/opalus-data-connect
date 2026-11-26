@@ -72,6 +72,14 @@ TAREFA = {
             "avaliada”."
         ),
     },
+    # Seleciona em Oracle > Comparar > Em lote, nao em /setup/lote: aqui so entra
+    # o que a pagina de progresso e a lista de lotes recentes usam.
+    "comparacao": {
+        "titulo": "Lote de comparações",
+        "caminho": "/oracle/comparar/lote",
+        "capacidade": "llm",
+        "rotulo": "comparações",
+    },
 }
 
 
@@ -147,6 +155,7 @@ def gerar_progresso(lote_id, usuario=None, aviso=None):
             f"{lote['paralelismo']} em paralelo"
         ),
         lote=lote,
+        voltar=TAREFA[lote["tarefa"]]["caminho"],
         andamento=andamento,
         falhas=problemas,
         # Enquanto roda, a pagina se recarrega sozinha; ao terminar, para

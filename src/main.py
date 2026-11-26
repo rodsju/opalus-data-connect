@@ -16,6 +16,8 @@ from . import catalogo as catalogo_mod
 from . import comparacao as comparacao_mod
 from . import comparar as comparar_view
 from . import config as config_mod
+from . import consulta as consulta_mod
+from . import consulta_view
 from . import debug as debug_view
 from . import embeddings as embeddings_mod
 from . import esquemas as esquemas_mod
@@ -315,6 +317,157 @@ def oracle_comparar_gerar(
     return RedirectResponse(
         url=f"/oracle/comparar/ver?ids={','.join(str(i) for i in lista)}", status_code=303
     )
+
+
+def _inteiros(valores):
+    saida = []
+    for valor in valores:
+        try:
+            saida.append(int(valor))
+        except (TypeError, ValueError):
+            continue
+    return saida
+
+
+def _recorte_do_lote(dados):
+    """base/alvo/q/so_sem, do GET ou do POST. Sem `enviado` nem `alvo` e a
+    primeira visita: todos os outros schemas entram como alvo."""
+    base = _inteiros([dados.get("base")])
+    alvos = _inteiros(dados.getlist("alvo"))
+    if not alvos and not dados.get("enviado") and not dados.get("base"):
+        alvos = None
+    # Trocou o base: os alvos marcados eram os do base anterior -- recomeca com todos
+    anterior = _inteiros([dados.get("base_anterior")])
+    if base and anterior and base != anterior:
+        alvos = None
+    return {
+        "base_id": base[0] if base else None,
+        "alvos": alvos,
+        "termo": (dados.get("q") or "").strip(),
+        "so_sem": bool(dados.get("so_sem")),
+    }
+
+
+@app.get("/oracle/comparar/lote")
+def oracle_comparar_lote(request: Request):
+    """Schema base x outros: um conjunto por tabela, para enfileirar."""
+    html, status = comparar_view.gerar_lote(
+        **_recorte_do_lote(request.query_params), usuario=usuario_mod.identificar(request)
+    )
+    return HTMLResponse(content=html, status_code=status)
+
+
+@app.post("/oracle/comparar/lote")
+async def oracle_comparar_lote_criar(request: Request):
+    """Cria o lote de comparacoes (tarefa comparacao) e dispara o script destacado."""
+    usuario = usuario_mod.identificar(request)
+    dados = await request.form()
+    recorte = _recorte_do_lote(dados)
+    par = dados.get("par") or ""
+    slug, _, modelo = par.partition("::")
+    paralelismo = max(1, min(4, (_inteiros([dados.get("paralelismo")]) or [1])[0]))
+    try:
+        if not slug or not modelo:
+            raise lote_mod.LoteInvalido("Escolha o provedor e o modelo")
+        conjuntos = comparacao_mod.conjuntos_validos(dados.getlist("conj"))
+        lote_id = lote_mod.criar(
+            slug, modelo, paralelismo, None,
+            {"base_id": recorte["base_id"], "alvos": recorte["alvos"] or [],
+             "termo": recorte["termo"]},
+            usuario["email"] if usuario else None,
+            tarefa="comparacao",
+            conjuntos=conjuntos,
+        )
+        lote_mod.disparar(lote_id)
+    except (lote_mod.LoteInvalido, comparacao_mod.ComparacaoInvalida,
+            catalogo_mod.ConsultaFalhou) as falha:
+        html, _ = comparar_view.gerar_lote(
+            **recorte, paralelismo=paralelismo, usuario=usuario, aviso=_aviso_de(falha)
+        )
+        return HTMLResponse(content=html, status_code=400)
+    return RedirectResponse(url=f"/setup/lote/{lote_id}", status_code=303)
+
+
+# --------------------------------------------------------------------------
+# Fontes de dados > Assistente de consulta
+#
+# Tambem antes de /oracle/{secao}. As travas (checagem, READ ONLY, teto de
+# linhas, mascara, auditoria) vivem em src/consulta.py, nao aqui.
+# --------------------------------------------------------------------------
+
+
+def _email(usuario):
+    return usuario["email"] if usuario else None
+
+
+@app.get("/oracle/consulta")
+def oracle_consulta(request: Request, log: int = Query(default=0)):
+    """Editor vazio, ou reaberto a partir de uma entrada do historico."""
+    usuario = usuario_mod.identificar(request)
+    sql = pedido = ""
+    if log:
+        try:
+            entrada = consulta_mod.buscar_log(log, _email(usuario))
+        except catalogo_mod.ConsultaFalhou:
+            entrada = None
+        if entrada:
+            sql, pedido = entrada["sql"] or "", entrada["prompt"] or ""
+    html, status = consulta_view.gerar(usuario, sql=sql, pedido=pedido,
+                                       modo="prompt" if pedido else "sql")
+    return HTMLResponse(content=html, status_code=status)
+
+
+@app.post("/oracle/consulta/sugerir")
+def oracle_consulta_sugerir(
+    request: Request,
+    pedido: str = Form(default=""),
+    tabelas: str = Form(default=""),
+    provedor: str = Form(default=""),
+):
+    """A IA escreve o SQL e ele volta para o editor -- sem executar."""
+    usuario = usuario_mod.identificar(request)
+    comum = dict(pedido=pedido, tabelas=tabelas, provedor=provedor, aba="prompt")
+    esquema_id = esquemas_mod.atual_id()
+    try:
+        if not esquema_id:
+            raise consulta_mod.ConsultaRecusada("Escolha um schema no cabeçalho")
+        sugestao = consulta_mod.sugerir(
+            esquema_id, pedido, provedor or None, tabelas, _email(usuario)
+        )
+    except (consulta_mod.ConsultaRecusada, ia_view.GeracaoFalhou,
+            provedores_mod.ConfiguracaoInvalida, catalogo_mod.ConsultaFalhou) as falha:
+        html, _ = consulta_view.gerar(usuario, aviso=_aviso_de(falha), **comum)
+        return HTMLResponse(content=html, status_code=400)
+    html, status = consulta_view.gerar(
+        usuario, sql=sugestao["sql"], sugestao=sugestao, modo="prompt", **comum
+    )
+    return HTMLResponse(content=html, status_code=status)
+
+
+@app.post("/oracle/consulta/executar")
+def oracle_consulta_executar(
+    request: Request,
+    sql: str = Form(default=""),
+    modo: str = Form(default="sql"),
+    pedido: str = Form(default=""),
+):
+    """Roda no Oracle da origem, com todas as travas, e mostra o retorno literal."""
+    usuario = usuario_mod.identificar(request)
+    modo = modo if modo in ("sql", "prompt") else "sql"
+    comum = dict(sql=sql, pedido=pedido, modo=modo)
+    esquema_id = esquemas_mod.atual_id()
+    try:
+        if not esquema_id:
+            raise consulta_mod.ConsultaRecusada("Escolha um schema no cabeçalho")
+        resultado = consulta_mod.executar(
+            esquema_id, sql, _email(usuario), modo=modo, prompt=pedido or None
+        )
+    except (consulta_mod.ConsultaRecusada, consulta_mod.ConsultaFalhou,
+            catalogo_mod.ConsultaFalhou) as falha:
+        html, _ = consulta_view.gerar(usuario, aviso=_aviso_de(falha), **comum)
+        return HTMLResponse(content=html, status_code=400)
+    html, status = consulta_view.gerar(usuario, resultado=resultado, **comum)
+    return HTMLResponse(content=html, status_code=status)
 
 
 @app.get("/oracle/{secao}")
@@ -645,7 +798,7 @@ def _filtros_do_lote(dados):
 
 def _tarefa_do_lote(dados):
     tarefa = (dados.get("tarefa") or "descricao").strip()
-    return tarefa if tarefa in lote_mod.TAREFAS else "descricao"
+    return tarefa if tarefa in lote_mod.TAREFAS_POR_OBJETO else "descricao"
 
 
 @app.get("/setup/lote")
@@ -728,7 +881,11 @@ def setup_lote_progresso(request: Request, lote_id: int):
 def setup_lote_retomar(request: Request, lote_id: int):
     """Continua um lote cancelado pelos itens ainda pendentes."""
     try:
-        aberto = lote_mod.em_andamento()
+        lote = lote_mod.buscar(lote_id)
+        if not lote:
+            raise HTTPException(status_code=404, detail=f"lote desconhecido: {lote_id}")
+        # A trava e por tarefa: um lote de comparacao nao espera um de descricao
+        aberto = lote_mod.em_andamento(lote["tarefa"])
         if aberto:
             raise lote_mod.LoteInvalido(f"O lote #{aberto['id']} ainda está em andamento")
         lote_mod.disparar(lote_id, retomar=True)
