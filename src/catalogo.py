@@ -104,7 +104,15 @@ ARQUIVO_DDL = os.path.join(
 LOCK_TIMEOUT = "15s"
 
 
-def aplicar_ddl():
+# Tentativas do boot. Logo que o container sobe, a rede da Direct VPC egress ainda
+# pode nao alcancar o endpoint PSC do Cloud SQL: em hml (25/11/2026) o boot deu
+# `connection timeout expired` e a tabela nova do deploy nao foi criada, com o app
+# conectando normal segundos depois. Uma tentativa so caia exatamente nessa janela.
+TENTATIVAS_BOOT = 8
+ESPERA_BOOT = 5  # segundos, crescendo linear: 5, 10, 15... ~2,5 min no total
+
+
+def aplicar_ddl(contexto="no boot", registrar_falha=True):
     """Aplica scripts/catalogo_schema.sql numa transacao so. Devolve (ok, detalhe).
 
     Tudo ou nada: o arquivo vai inteiro num execute, entao uma falha no meio nao
@@ -123,11 +131,36 @@ def aplicar_ddl():
             conexao.execute("SELECT pg_advisory_xact_lock(hashtext('catalogo_ddl'))")
             conexao.execute(ddl)
     except Exception as e:
-        logger.error("DDL do catalogo NAO aplicado no boot: %s", e, exc_info=True)
+        if registrar_falha:
+            logger.error("DDL do catalogo NAO aplicado %s: %s", contexto, e, exc_info=True)
         return False, str(e)
     ms = (time.perf_counter() - inicio) * 1000
-    logger.info("DDL do catalogo aplicado no boot em %.0f ms", ms)
+    logger.info("DDL do catalogo aplicado %s em %.0f ms", contexto, ms)
     return True, f"{ms:.0f} ms"
+
+
+def aplicar_ddl_no_boot(tentativas=None, espera=None, dormir=None):
+    """aplicar_ddl() com retentativa, para rodar em segundo plano no boot.
+
+    Repete qualquer falha -- conexao que ainda nao abre e lock da revisao
+    anterior passam sozinhos; um erro de SQL se repete igual e so termina no
+    ERROR da ultima tentativa, com o traceback.
+    """
+    import time
+
+    tentativas = tentativas or TENTATIVAS_BOOT
+    espera = ESPERA_BOOT if espera is None else espera
+    dormir = dormir or time.sleep
+    for tentativa in range(1, tentativas + 1):
+        ultima = tentativa == tentativas
+        ok, detalhe = aplicar_ddl("no boot", registrar_falha=ultima)
+        if ok or ultima:
+            return ok, detalhe
+        logger.warning(
+            "DDL do catalogo: tentativa %s de %s falhou (%s); de novo em %ss",
+            tentativa, tentativas, detalhe, espera * tentativa,
+        )
+        dormir(espera * tentativa)
 
 
 def um(sql, params=(), descricao="consulta"):

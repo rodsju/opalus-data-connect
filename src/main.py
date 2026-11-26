@@ -1,7 +1,7 @@
 
-import asyncio
 import contextlib
 import os
+import threading
 import urllib.parse
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
@@ -36,12 +36,22 @@ from . import usuario as usuario_mod
 # Antes de qualquer rota: sem isto os logger.error dos modulos nao saem formatados
 log_mod.configurar()
 
+
 @contextlib.asynccontextmanager
 async def ciclo_de_vida(_app):
-    """Migra o catalogo antes de aceitar request. DDL_NO_BOOT=1 desliga (ex.: um
-    banco onde o app nao e o dono do schema)."""
+    """Migra o catalogo no boot, em segundo plano. DDL_NO_BOOT=1 desliga (ex.: um
+    banco onde o app nao e o dono do schema).
+
+    Em segundo plano porque as tentativas podem levar minutos (a rede da VPC
+    demora a ficar pronta no Cloud Run, catalogo.aplicar_ddl_no_boot) e o
+    container precisa escutar a porta antes disso.
+    """
+    # Thread daemon, nao asyncio.to_thread: o executor padrao seria esperado no
+    # shutdown, e um SIGTERM no meio das tentativas seguraria o container.
     if os.getenv("DDL_NO_BOOT", "").strip().lower() not in ("1", "true", "sim"):
-        await asyncio.to_thread(catalogo_mod.aplicar_ddl)
+        threading.Thread(
+            target=catalogo_mod.aplicar_ddl_no_boot, name="ddl-boot", daemon=True
+        ).start()
     yield
 
 

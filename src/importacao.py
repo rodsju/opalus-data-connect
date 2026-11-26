@@ -391,7 +391,7 @@ def testar_conexao(esquema_id):
 
 
 def aplicar_ddl():
-    return catalogo.aplicar_ddl()
+    return catalogo.aplicar_ddl("pela tela")
 
 
 def percentual(importacao):

@@ -388,10 +388,23 @@ uma falha não deixa o schema pela metade. Isso funciona porque a SA de runtime 
 schema `catalogo` (passo 5.4). Um deploy que muda tabela ou view não exige mais colar
 SQL no Cloud SQL Studio.
 
-Para conferir no log da revisão, procure `DDL do catalogo aplicado no boot em N ms`. Se
-aparecer `DDL do catalogo NAO aplicado no boot`, o app sobe mesmo assim e as telas mostram
-o erro da consulta. Leia a causa no log, por exemplo um `lock_timeout` contra a revisão
-anterior, e faça um novo deploy ou cole o arquivo no Cloud SQL Studio como `postgres`.
+O DDL roda em segundo plano, com até 8 tentativas e espera crescente (~2,5 min no
+total). Logo que o container sobe, a rede da VPC pode ainda não alcançar o Cloud SQL, e
+a primeira conexão dá `connection timeout expired` (hml, 25/11/2026). As falhas
+intermediárias saem como WARNING; só a última vira ERROR.
+
+Para conferir no log da revisão, procure `DDL do catalogo aplicado no boot em N ms`. O log
+é JSON, então filtre por `jsonPayload.message`, não por `textPayload`:
+
+```bash
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="atlas-connect" AND jsonPayload.message:"DDL do catalogo"' \
+  --project=$PROJECT --limit=5 --freshness=1d \
+  --format='value(timestamp,resource.labels.revision_name,severity,jsonPayload.message,jsonPayload.stack_trace)'
+```
+
+Se aparecer `DDL do catalogo NAO aplicado no boot`, o app sobe mesmo assim e as telas
+mostram o erro da consulta. Leia a causa no `stack_trace`. Para aplicar na hora, sem
+redeploy, use **Setup › Importar dados › Aplicar DDL do catálogo**.
 `DDL_NO_BOOT=1` desliga a migração no boot.
 
 Local: o mesmo boot aplica o DDL. `make schema` continua disponível.
